@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens. Use these through Tailwind utilities (bg-brand-700,
+ * text-ink-muted, font-display, ...) instead of raw hex values.
+ */
+@theme {
+  --font-sans: var(--font-sans-loaded), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display-loaded), ui-serif, Georgia, serif;
+
+  /* Brand: deep maroon */
+  --color-brand-50: #fbf3f4;
+  --color-brand-100: #f5e1e4;
+  --color-brand-200: #ebc3c9;
+  --color-brand-300: #db96a1;
+  --color-brand-500: #a8404f;
+  --color-brand-600: #8f2f3e;
+  --color-brand-700: #772333;
+  --color-brand-800: #5f1c29;
+  --color-brand-900: #45141e;
+
+  /* Accent: muted gold */
+  --color-accent-100: #f7efd9;
+  --color-accent-400: #d4ad55;
+  --color-accent-600: #a67c1f;
+
+  /* Wine and gold (DESIGN.md): header, hero and other dark brand bands */
+  --color-wine-900: #1f050b;
+  --color-wine-800: #2a0810;
+  --color-wine-600: #4b0f1e;
+  --color-gold: #d2a54a;
+  --color-gold-soft: #e9d5a0;
+  --color-ivory: #f7eedd;
+
+  /* Neutrals */
+  --color-surface: #fffdf9;
+  --color-surface-muted: #f6f1ea;
+  --color-mist: #f8f4f4;
+  --color-line: #e7dfd3;
+  --color-field-line: #8a7b7f;
+  --color-ink: #1f1a17;
+  --color-ink-muted: #5c534c;
+
+  /* Status */
+  --color-success: #2f7a4b;
+  --color-danger: #b42318;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-surface text-ink font-sans antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-display text-ink;
+    text-wrap: balance;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand-600;
+  }
+}
+
+/* Homepage hero slider */
+@keyframes hero-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}

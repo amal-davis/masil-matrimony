@@ -1,0 +1,445 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-14T12:25:03.897740+00:00",
+  "title": "Design System: Maasil Matrimony",
+  "extensions": {
+    "colorMeta": {
+      "wine-900": {
+        "role": "primary",
+        "displayName": "Deep Wine",
+        "canonical": "oklch(0.168 0.047 7.9)",
+        "tonalRamp": [
+          "oklch(0.15 0.047 7.9)",
+          "oklch(0.25 0.047 7.9)",
+          "oklch(0.35 0.047 7.9)",
+          "oklch(0.48 0.047 7.9)",
+          "oklch(0.60 0.047 7.9)",
+          "oklch(0.72 0.047 7.9)",
+          "oklch(0.85 0.047 7.9)",
+          "oklch(0.95 0.047 7.9)"
+        ]
+      },
+      "wine-800": {
+        "role": "primary",
+        "displayName": "Maasil Wine",
+        "canonical": "oklch(0.199 0.057 9.6)",
+        "tonalRamp": [
+          "oklch(0.15 0.057 9.6)",
+          "oklch(0.25 0.057 9.6)",
+          "oklch(0.35 0.057 9.6)",
+          "oklch(0.48 0.057 9.6)",
+          "oklch(0.60 0.057 9.6)",
+          "oklch(0.72 0.057 9.6)",
+          "oklch(0.85 0.057 9.6)",
+          "oklch(0.95 0.057 9.6)"
+        ]
+      },
+      "wine-600": {
+        "role": "primary",
+        "displayName": "Wine Velvet",
+        "canonical": "oklch(0.280 0.090 10.6)",
+        "tonalRamp": [
+          "oklch(0.15 0.090 10.6)",
+          "oklch(0.25 0.090 10.6)",
+          "oklch(0.35 0.090 10.6)",
+          "oklch(0.48 0.090 10.6)",
+          "oklch(0.60 0.090 10.6)",
+          "oklch(0.72 0.090 10.6)",
+          "oklch(0.85 0.090 10.6)",
+          "oklch(0.95 0.090 10.6)"
+        ]
+      },
+      "gold": {
+        "role": "secondary",
+        "displayName": "Monogram Gold",
+        "canonical": "oklch(0.746 0.120 82.5)",
+        "tonalRamp": [
+          "oklch(0.15 0.120 82.5)",
+          "oklch(0.25 0.120 82.5)",
+          "oklch(0.35 0.120 82.5)",
+          "oklch(0.48 0.120 82.5)",
+          "oklch(0.60 0.120 82.5)",
+          "oklch(0.72 0.120 82.5)",
+          "oklch(0.85 0.120 82.5)",
+          "oklch(0.95 0.120 82.5)"
+        ]
+      },
+      "gold-soft": {
+        "role": "secondary",
+        "displayName": "Soft Gold",
+        "canonical": "oklch(0.877 0.072 89.8)",
+        "tonalRamp": [
+          "oklch(0.15 0.072 89.8)",
+          "oklch(0.25 0.072 89.8)",
+          "oklch(0.35 0.072 89.8)",
+          "oklch(0.48 0.072 89.8)",
+          "oklch(0.60 0.072 89.8)",
+          "oklch(0.72 0.072 89.8)",
+          "oklch(0.85 0.072 89.8)",
+          "oklch(0.95 0.072 89.8)"
+        ]
+      },
+      "ivory": {
+        "role": "neutral",
+        "displayName": "Ivory",
+        "canonical": "oklch(0.952 0.025 83.4)",
+        "tonalRamp": [
+          "oklch(0.15 0.025 83.4)",
+          "oklch(0.25 0.025 83.4)",
+          "oklch(0.35 0.025 83.4)",
+          "oklch(0.48 0.025 83.4)",
+          "oklch(0.60 0.025 83.4)",
+          "oklch(0.72 0.025 83.4)",
+          "oklch(0.85 0.025 83.4)",
+          "oklch(0.95 0.025 83.4)"
+        ]
+      },
+      "white": {
+        "role": "neutral",
+        "displayName": "White",
+        "canonical": "oklch(1.000 0.000 89.9)",
+        "tonalRamp": [
+          "oklch(0.15 0.000 89.9)",
+          "oklch(0.25 0.000 89.9)",
+          "oklch(0.35 0.000 89.9)",
+          "oklch(0.48 0.000 89.9)",
+          "oklch(0.60 0.000 89.9)",
+          "oklch(0.72 0.000 89.9)",
+          "oklch(0.85 0.000 89.9)",
+          "oklch(0.95 0.000 89.9)"
+        ]
+      },
+      "mist": {
+        "role": "neutral",
+        "displayName": "Mist",
+        "canonical": "oklch(0.970 0.004 17.2)",
+        "tonalRamp": [
+          "oklch(0.15 0.004 17.2)",
+          "oklch(0.25 0.004 17.2)",
+          "oklch(0.35 0.004 17.2)",
+          "oklch(0.48 0.004 17.2)",
+          "oklch(0.60 0.004 17.2)",
+          "oklch(0.72 0.004 17.2)",
+          "oklch(0.85 0.004 17.2)",
+          "oklch(0.95 0.004 17.2)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(0.231 0.016 5.0)",
+        "tonalRamp": [
+          "oklch(0.15 0.016 5.0)",
+          "oklch(0.25 0.016 5.0)",
+          "oklch(0.35 0.016 5.0)",
+          "oklch(0.48 0.016 5.0)",
+          "oklch(0.60 0.016 5.0)",
+          "oklch(0.72 0.016 5.0)",
+          "oklch(0.85 0.016 5.0)",
+          "oklch(0.95 0.016 5.0)"
+        ]
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "Ink Muted",
+        "canonical": "oklch(0.444 0.021 0.1)",
+        "tonalRamp": [
+          "oklch(0.15 0.021 0.1)",
+          "oklch(0.25 0.021 0.1)",
+          "oklch(0.35 0.021 0.1)",
+          "oklch(0.48 0.021 0.1)",
+          "oklch(0.60 0.021 0.1)",
+          "oklch(0.72 0.021 0.1)",
+          "oklch(0.85 0.021 0.1)",
+          "oklch(0.95 0.021 0.1)"
+        ]
+      },
+      "field-line": {
+        "role": "neutral",
+        "displayName": "Field Line",
+        "canonical": "oklch(0.598 0.019 359.7)",
+        "tonalRamp": [
+          "oklch(0.15 0.019 359.7)",
+          "oklch(0.25 0.019 359.7)",
+          "oklch(0.35 0.019 359.7)",
+          "oklch(0.48 0.019 359.7)",
+          "oklch(0.60 0.019 359.7)",
+          "oklch(0.72 0.019 359.7)",
+          "oklch(0.85 0.019 359.7)",
+          "oklch(0.95 0.019 359.7)"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "oklch(0.898 0.012 4.8)",
+        "tonalRamp": [
+          "oklch(0.15 0.012 4.8)",
+          "oklch(0.25 0.012 4.8)",
+          "oklch(0.35 0.012 4.8)",
+          "oklch(0.48 0.012 4.8)",
+          "oklch(0.60 0.012 4.8)",
+          "oklch(0.72 0.012 4.8)",
+          "oklch(0.85 0.012 4.8)",
+          "oklch(0.95 0.012 4.8)"
+        ]
+      },
+      "success": {
+        "role": "status",
+        "displayName": "Success",
+        "canonical": "oklch(0.476 0.089 153.9)",
+        "tonalRamp": [
+          "oklch(0.15 0.089 153.9)",
+          "oklch(0.25 0.089 153.9)",
+          "oklch(0.35 0.089 153.9)",
+          "oklch(0.48 0.089 153.9)",
+          "oklch(0.60 0.089 153.9)",
+          "oklch(0.72 0.089 153.9)",
+          "oklch(0.85 0.089 153.9)",
+          "oklch(0.95 0.089 153.9)"
+        ]
+      },
+      "danger": {
+        "role": "status",
+        "displayName": "Danger",
+        "canonical": "oklch(0.472 0.162 28.4)",
+        "tonalRamp": [
+          "oklch(0.15 0.162 28.4)",
+          "oklch(0.25 0.162 28.4)",
+          "oklch(0.35 0.162 28.4)",
+          "oklch(0.48 0.162 28.4)",
+          "oklch(0.60 0.162 28.4)",
+          "oklch(0.72 0.162 28.4)",
+          "oklch(0.85 0.162 28.4)",
+          "oklch(0.95 0.162 28.4)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Hero headline and wordmark only; one per page."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section headings."
+      },
+      "tagline": {
+        "displayName": "Tagline",
+        "purpose": "Brand line and at most one pull-quote per page."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Card titles, form section titles, profile names."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "All running text; 18px, max 68ch."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Buttons, form labels, nav links, chips."
+      },
+      "wordmark-kicker": {
+        "displayName": "Wordmark Kicker",
+        "purpose": "Only the word MATRIMONY in the logo lockup."
+      }
+    },
+    "shadows": [
+      {
+        "name": "monogram-lift",
+        "value": "drop-shadow(0 18px 28px rgba(0, 0, 0, 0.45))",
+        "purpose": "Gold MM logo on wine surfaces (CSS filter)."
+      },
+      {
+        "name": "header-settle",
+        "value": "0 1px 0 rgba(210, 165, 74, 0.25), 0 8px 24px rgba(31, 5, 11, 0.18)",
+        "purpose": "Sticky wine header after scroll."
+      },
+      {
+        "name": "float",
+        "value": "0 12px 32px rgba(36, 26, 28, 0.14)",
+        "purpose": "Dropdowns, dialogs, popovers above white content."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-rise",
+        "value": "cubic-bezier(0.2, 0.7, 0.2, 1)",
+        "purpose": "Hero entrance: 14px rise + fade over 1.1s, staggered 150-200ms."
+      },
+      {
+        "name": "ease-out-quart",
+        "value": "cubic-bezier(0.25, 1, 0.5, 1)",
+        "purpose": "State transitions (hover, focus, open) at 180ms."
+      },
+      {
+        "name": "frame-fade",
+        "value": "1.6s ease-out",
+        "purpose": "Hero invitation frame fade-in."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "xl",
+        "value": "1280px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main action on white surfaces.",
+      "html": "<button class=\"ds-btn-primary\">Register free</button>",
+      "css": ".ds-btn-primary { font-family: Jost, 'Helvetica Neue', Arial, sans-serif; font-size: 15px; font-weight: 500; letter-spacing: 0.01em; height: 52px; padding: 14px 28px; border-radius: 6px; cursor: pointer; transition: background-color 180ms cubic-bezier(0.25, 1, 0.5, 1), color 180ms cubic-bezier(0.25, 1, 0.5, 1), border-color 180ms cubic-bezier(0.25, 1, 0.5, 1); border: 0; background: #4b0f1e; color: #ffffff; } .ds-btn-primary:hover { background: #2a0810; } .ds-btn-primary:focus-visible { outline: 2px solid #4b0f1e; outline-offset: 2px; }"
+    },
+    {
+      "name": "Gold Button",
+      "kind": "button",
+      "refersTo": "button-gold",
+      "description": "Main action inside wine bands only.",
+      "html": "<div class=\"ds-wine-wrap\"><button class=\"ds-btn-gold\">Request a callback</button></div>",
+      "css": ".ds-wine-wrap { display: inline-block; padding: 24px; background: #2a0810; } .ds-btn-gold { font-family: Jost, 'Helvetica Neue', Arial, sans-serif; font-size: 15px; font-weight: 500; letter-spacing: 0.01em; height: 52px; padding: 14px 28px; border-radius: 6px; cursor: pointer; transition: background-color 180ms cubic-bezier(0.25, 1, 0.5, 1), color 180ms cubic-bezier(0.25, 1, 0.5, 1), border-color 180ms cubic-bezier(0.25, 1, 0.5, 1); border: 0; background: #d2a54a; color: #1f050b; } .ds-btn-gold:hover { background: #e9d5a0; } .ds-btn-gold:focus-visible { outline: 2px solid #d2a54a; outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Secondary action on white.",
+      "html": "<button class=\"ds-btn-secondary\">How it works</button>",
+      "css": ".ds-btn-secondary { font-family: Jost, 'Helvetica Neue', Arial, sans-serif; font-size: 15px; font-weight: 500; letter-spacing: 0.01em; height: 52px; padding: 14px 28px; border-radius: 6px; cursor: pointer; transition: background-color 180ms cubic-bezier(0.25, 1, 0.5, 1), color 180ms cubic-bezier(0.25, 1, 0.5, 1), border-color 180ms cubic-bezier(0.25, 1, 0.5, 1); border: 1.5px solid #4b0f1e; background: #ffffff; color: #4b0f1e; } .ds-btn-secondary:hover { background: #f8f4f4; } .ds-btn-secondary:focus-visible { outline: 2px solid #4b0f1e; outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Labelled input on white; label always visible above.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Mobile number</span><input class=\"ds-input\" type=\"tel\" placeholder=\"+91 98765 43210\"></label>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 8px; width: 320px; } .ds-field-label { font-family: Jost, 'Helvetica Neue', Arial, sans-serif; font-size: 15px; font-weight: 500; color: #241a1c; } .ds-input { font-family: Jost, 'Helvetica Neue', Arial, sans-serif; font-size: 18px; height: 52px; padding: 12px 16px; border: 1px solid #8a7b7f; border-radius: 6px; background: #ffffff; color: #241a1c; transition: background-color 180ms cubic-bezier(0.25, 1, 0.5, 1), color 180ms cubic-bezier(0.25, 1, 0.5, 1), border-color 180ms cubic-bezier(0.25, 1, 0.5, 1); } .ds-input::placeholder { color: #5e4f53; } .ds-input:hover { border-color: #5e4f53; } .ds-input:focus-visible { outline: none; border: 2px solid #4b0f1e; padding: 11px 15px; }"
+    },
+    {
+      "name": "Bride / Groom Toggle",
+      "kind": "chip",
+      "refersTo": "button-primary",
+      "description": "Two-option segmented control for quick search.",
+      "html": "<div class=\"ds-seg\" role=\"radiogroup\" aria-label=\"Looking for\"><button class=\"ds-seg-opt\" role=\"radio\" aria-checked=\"true\">Bride</button><button class=\"ds-seg-opt\" role=\"radio\" aria-checked=\"false\">Groom</button></div>",
+      "css": ".ds-seg { display: inline-flex; border: 1.5px solid #4b0f1e; border-radius: 6px; overflow: hidden; } .ds-seg-opt { font-family: Jost, 'Helvetica Neue', Arial, sans-serif; font-size: 15px; font-weight: 500; min-width: 120px; height: 48px; border: 0; background: #ffffff; color: #4b0f1e; cursor: pointer; transition: background-color 180ms cubic-bezier(0.25, 1, 0.5, 1), color 180ms cubic-bezier(0.25, 1, 0.5, 1), border-color 180ms cubic-bezier(0.25, 1, 0.5, 1); } .ds-seg-opt[aria-checked=\"true\"] { background: #4b0f1e; color: #ffffff; } .ds-seg-opt:hover:not([aria-checked=\"true\"]) { background: #f8f4f4; } .ds-seg-opt:focus-visible { outline: 2px solid #4b0f1e; outline-offset: -4px; }"
+    },
+    {
+      "name": "Header Navigation",
+      "kind": "nav",
+      "refersTo": "nav-bar",
+      "description": "Sticky wine header: monogram, wordmark, links, Register.",
+      "html": "<nav class=\"ds-nav\"><span class=\"ds-nav-brand\"><span class=\"ds-nav-mono\" aria-hidden=\"true\">MM</span>Maasil</span><span class=\"ds-nav-links\"><a href=\"#\" aria-current=\"page\">Home</a><a href=\"#\">Packages</a><a href=\"#\">Contact</a></span><a class=\"ds-nav-cta\" href=\"#\">Register free</a></nav>",
+      "css": ".ds-nav { display: flex; align-items: center; gap: 32px; height: 72px; padding: 0 24px; background: #2a0810; box-shadow: 0 1px 0 rgba(210, 165, 74, 0.25); } .ds-nav-brand { font-family: 'Cormorant Garamond', Garamond, 'Times New Roman', serif; display: flex; align-items: center; gap: 10px; font-size: 26px; font-weight: 500; color: #f7eedd; } .ds-nav-mono { font-family: 'Cormorant Garamond', Garamond, 'Times New Roman', serif; font-size: 28px; font-weight: 600; color: #d2a54a; } .ds-nav-links { display: flex; gap: 24px; margin-left: auto; } .ds-nav-links a { font-family: Jost, 'Helvetica Neue', Arial, sans-serif; font-size: 15px; font-weight: 500; color: #f7eedd; text-decoration: none; padding: 12px 0; border-bottom: 1px solid transparent; transition: background-color 180ms cubic-bezier(0.25, 1, 0.5, 1), color 180ms cubic-bezier(0.25, 1, 0.5, 1), border-color 180ms cubic-bezier(0.25, 1, 0.5, 1); } .ds-nav-links a:hover, .ds-nav-links a[aria-current=\"page\"] { border-bottom-color: #d2a54a; } .ds-nav-links a:focus-visible, .ds-nav-cta:focus-visible { outline: 2px solid #d2a54a; outline-offset: 2px; } .ds-nav-cta { font-family: Jost, 'Helvetica Neue', Arial, sans-serif; font-size: 15px; font-weight: 500; padding: 12px 22px; border-radius: 6px; background: #d2a54a; color: #1f050b; text-decoration: none; transition: background-color 180ms cubic-bezier(0.25, 1, 0.5, 1), color 180ms cubic-bezier(0.25, 1, 0.5, 1), border-color 180ms cubic-bezier(0.25, 1, 0.5, 1); } .ds-nav-cta:hover { background: #e9d5a0; }"
+    },
+    {
+      "name": "Profile Card",
+      "kind": "card",
+      "refersTo": "profile-card",
+      "description": "Public profile preview; never shows contact details.",
+      "html": "<article class=\"ds-card\"><div class=\"ds-card-photo\" aria-hidden=\"true\">MM</div><div class=\"ds-card-body\"><h3 class=\"ds-card-name\">Anjali</h3><p class=\"ds-card-meta\">27 yrs &middot; 5&prime;4&Prime; &middot; MBA &middot; Thrissur</p></div></article>",
+      "css": ".ds-card { width: 240px; background: #ffffff; border: 1px solid #e5dadc; border-radius: 12px; overflow: hidden; transition: background-color 180ms cubic-bezier(0.25, 1, 0.5, 1), color 180ms cubic-bezier(0.25, 1, 0.5, 1), border-color 180ms cubic-bezier(0.25, 1, 0.5, 1); } .ds-card:hover { border-color: #8a7b7f; } .ds-card-photo { font-family: 'Cormorant Garamond', Garamond, 'Times New Roman', serif; aspect-ratio: 4 / 5; display: grid; place-items: center; background: #f8f4f4; color: #4b0f1e; font-size: 40px; } .ds-card-body { padding: 20px 24px 24px; } .ds-card-name { font-family: Jost, 'Helvetica Neue', Arial, sans-serif; margin: 0; font-size: 20px; font-weight: 500; color: #241a1c; } .ds-card-meta { font-family: Jost, 'Helvetica Neue', Arial, sans-serif; margin: 6px 0 0; font-size: 16px; line-height: 1.5; color: #5e4f53; }"
+    },
+    {
+      "name": "Advisor Band",
+      "kind": "custom",
+      "refersTo": "advisor-band",
+      "description": "Wine band giving the assisted service equal weight.",
+      "html": "<section class=\"ds-band\"><h2 class=\"ds-band-title\">Prefer a personal advisor?</h2><p class=\"ds-band-text\">Our relationship advisors will call you and guide your family through every step.</p><button class=\"ds-band-cta\">Request a callback</button></section>",
+      "css": ".ds-band { padding: 56px 32px; background: #2a0810; text-align: center; } .ds-band-title { font-family: 'Cormorant Garamond', Garamond, 'Times New Roman', serif; margin: 0; font-size: 40px; font-weight: 500; line-height: 1.15; color: #f7eedd; } .ds-band-text { font-family: Jost, 'Helvetica Neue', Arial, sans-serif; max-width: 34em; margin: 12px auto 28px; font-size: 18px; line-height: 1.65; color: #e9d5a0; } .ds-band-cta { font-family: Jost, 'Helvetica Neue', Arial, sans-serif; font-size: 15px; font-weight: 500; letter-spacing: 0.01em; height: 52px; padding: 14px 28px; border-radius: 6px; cursor: pointer; transition: background-color 180ms cubic-bezier(0.25, 1, 0.5, 1), color 180ms cubic-bezier(0.25, 1, 0.5, 1), border-color 180ms cubic-bezier(0.25, 1, 0.5, 1); border: 0; background: #d2a54a; color: #1f050b; } .ds-band-cta:hover { background: #e9d5a0; } .ds-band-cta:focus-visible { outline: 2px solid #d2a54a; outline-offset: 2px; }"
+    },
+    {
+      "name": "Interlocking Rings Divider",
+      "kind": "custom",
+      "refersTo": "",
+      "description": "Signature divider; used once, under the hero tagline.",
+      "html": "<div class=\"ds-rings-wrap\"><svg class=\"ds-rings\" viewBox=\"0 0 148 24\" fill=\"none\" stroke=\"currentColor\" aria-hidden=\"true\"><path d=\"M0 12h54M94 12h54\" stroke-opacity=\".6\"/><circle cx=\"68\" cy=\"12\" r=\"9\"/><circle cx=\"80\" cy=\"12\" r=\"9\"/></svg></div>",
+      "css": ".ds-rings-wrap { display: inline-block; padding: 24px 32px; background: #2a0810; } .ds-rings { display: block; width: 148px; height: 24px; color: #d2a54a; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Wine-and-Gold Invitation, Opened",
+    "overview": "The coming-soon page at maasilmatrimony.com is a sealed invitation: deep wine, a gold monogram, an invitation-card border and the line *\"Where two families become one.\"* The website is that invitation opened. The wine and gold stay at the edges (the header, the hero, the advisor band and the footer) like the cover of a card. Inside, the pages are clear white, so a parent can read, search and fill in forms comfortably.\n\nPRODUCT.md asks for a brand that is **trusted, warm, rooted** and readable *\"by a 55-year-old on a mid-range Android phone in daylight first.\"* So richness lives in colour, the monogram and the serif headlines, never in ornament. The system explicitly rejects **generic SaaS landing pages** (gradient blobs, metric heroes, identical icon-card grids), **wedding-card kitsch** (heavy gold foil, mandala borders, ornate script everywhere) and the **dating-app vibe** (swipe mechanics, flirtatious tone, neon).\n\nLayout is information-rich but orderly, following nestmatrimony.com's content model (registration and quick search above the fold, trust proof, an assisted-service band, browse-by-community) with clearer hierarchy and far less repetition. Content sits in a 1200px-max container with generous vertical rhythm (64–96px between sections on desktop, 40–64px on mobile). Motion is gentle: the coming-soon page's soft staggered rise plays once, on the hero only.",
+    "keyCharacteristics": [
+      "Wine frame, white content: wine bands open and close the page and mark the assisted-service moment; everything you read or fill in sits on white.",
+      "Gold is jewellery: logo, hairlines and small accents on wine. Never text on white.",
+      "Cormorant Garamond for display, Jost for everything you actually read.",
+      "One signature moment each: the invitation-card frame around the hero and the interlocking rings once under the tagline.",
+      "Large type, high contrast and 48px+ tap targets throughout."
+    ],
+    "rules": [
+      {
+        "name": "The Gold Is Jewellery Rule",
+        "body": "Gold appears only on wine surfaces and never covers more than about 10% of any screen. Gold text on white is prohibited: it measures 2.3:1 and fails WCAG.",
+        "section": "colors"
+      },
+      {
+        "name": "The Read It On White Rule",
+        "body": "Anything longer than two sentences, and every form field, sits on white or mist. Wine surfaces carry headlines, short supporting lines and calls to action only.",
+        "section": "colors"
+      },
+      {
+        "name": "The No Cream Rule",
+        "body": "Ivory is a text colour, not a background. Light surfaces are pure white or wine-tinted mist, never cream, sand or parchment.",
+        "section": "colors"
+      },
+      {
+        "name": "The Serif Is For Speaking Up Rule",
+        "body": "Cormorant Garamond is used only at 24px and above. Its thin strokes vanish at small sizes on low-end screens, so labels, forms, body text and anything under 24px use Jost.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Kicker Rule",
+        "body": "Wide-tracked uppercase text belongs to the wordmark alone. No uppercase eyebrow labels above section headings.",
+        "section": "typography"
+      },
+      {
+        "name": "The Malayalam-Ready Rule",
+        "body": "Layouts must tolerate 30–40% longer strings and taller glyphs. When Malayalam ships, pair with Noto Serif Malayalam (display) and Noto Sans Malayalam (body), and keep line-height at 1.65 or more for body text.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-At-Rest Rule",
+        "body": "Cards and panels on white have no shadow at rest; a hairline border defines them. Hover may darken the border to field-line, never lift the card.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** use wine-800 for the header, hero, advisor band and footer, and pure white or mist for every content section.",
+      "**Do** keep gold on wine only: logo, 1px hairlines, the hero frame, the rings divider, gold buttons and short accent text.",
+      "**Do** set body text in Jost at 18px or larger with line-height 1.65, in ink on white.",
+      "**Do** make every tap target at least 48×48px and every form field 52px tall with a visible label above it.",
+      "**Do** put registration and quick search in the hero and the advisor band once per page, so self-serve and assisted service carry equal weight.",
+      "**Do** show trust with real, consistent facts (the verification process, privacy controls, an office address, a real phone number).",
+      "**Do** use the gold monogram with its drop shadow on wine surfaces."
+    ],
+    "donts": [
+      "**Don't** set gold text on white or mist (2.3:1 fails WCAG).",
+      "**Don't** use ivory, cream, sand or parchment as a background. Light surfaces are white (#ffffff) or mist (#f8f4f4).",
+      "**Don't** use Cormorant Garamond below 24px or for body text, labels, buttons or form fields.",
+      "**Don't** build **generic SaaS landing pages**: no gradient blobs, no metric heroes (\"5 Lakh+\" as a giant stat block), no identical icon-card feature grids.",
+      "**Don't** drift into **wedding-card kitsch**: no heavy gold foil, mandala borders or ornate script fonts, and no repeating the invitation frame or rings beyond their one signature appearance.",
+      "**Don't** borrow the **dating-app vibe**: no swipe mechanics, playful or flirtatious copy, or neon accents.",
+      "**Don't** put uppercase tracked eyebrow labels above section headings; wide tracking belongs to the wordmark alone.",
+      "**Don't** use side-stripe borders (`border-left` thicker than 1px) as accents on cards or callouts.",
+      "**Don't** use pill-shaped buttons, gradient text or glassmorphism.",
+      "**Don't** show contact details, exact birth dates or private photos on any public surface.",
+      "**Don't** animate anything that delays reading, and never ship an animation without a reduced-motion alternative."
+    ]
+  }
+}

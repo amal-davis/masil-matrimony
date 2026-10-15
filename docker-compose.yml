@@ -1,0 +1,38 @@
+# Local development MySQL server.
+#
+# Credentials are read from backend/.env (never hardcoded here):
+#   docker compose --env-file backend/.env up -d mysql
+#
+# Required variables in backend/.env: DB_NAME, DB_USER, DB_PASSWORD,
+# MYSQL_ROOT_PASSWORD. The port is bound to localhost only.
+#
+# Data persists in the named volume "mysql_data". `docker compose down`
+# keeps it; `docker compose down -v` DELETES the database permanently.
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: matrimony-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:?DB_NAME is not set}
+      MYSQL_USER: ${DB_USER:?DB_USER is not set}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is not set}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is not set}
+      TZ: UTC
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "127.0.0.1:${DB_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mysql_data:
