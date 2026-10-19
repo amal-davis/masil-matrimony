@@ -24,37 +24,37 @@ export type HeroSlide = {
 export const heroSlides: HeroSlide[] = [
   {
     id: "perfect-partner",
-    image: coupleLotusField,
-    alt: "A smiling Kerala couple in traditional dress among lotus flowers",
-    position: { mobile: "58% 20%", desktop: "center 8%" },
+    image: keralaWeddingFamily,
+    alt: "A bride and groom in Kerala wedding attire surrounded by their families",
+    position: { mobile: "30% 20%", desktop: "center 22%" },
     eyebrow: "Trusted matrimony for Kerala families",
     heading: "Find Your Perfect Life Partner",
     description:
       "Begin a meaningful journey toward marriage with a profile that reflects your values, dreams, and family.",
     credit:
-      "Picnu (@arununnikrishnan) on Unsplash, https://unsplash.com/photos/IyxLjgxNj3s (Unsplash License)",
+      "shades by 43 (@shades_by_43) on Unsplash, https://unsplash.com/photos/VJP7K4uihUA (Unsplash License)",
   },
   {
     id: "two-families",
-    image: keralaWeddingFamily,
-    alt: "A bride and groom in Kerala wedding attire surrounded by their families",
-    position: { mobile: "30% 20%", desktop: "center 22%" },
+    image: garlandedCouple,
+    alt: "A newly married couple wearing wedding garlands, smiling at each other",
+    position: { mobile: "52% 28%", desktop: "center 32%" },
     eyebrow: "Verified profiles, personal care",
     heading: "Where Two Families Become One",
     description: "Discover compatible matches and take the next step toward a beautiful future together.",
     credit:
-      "shades by 43 (@shades_by_43) on Unsplash, https://unsplash.com/photos/VJP7K4uihUA (Unsplash License)",
+      "Sabesh Photography LTD (@sabesh) on Unsplash, https://unsplash.com/photos/OzyvCE9a60M (Unsplash License)",
   },
   {
     id: "your-story",
-    image: garlandedCouple,
-    alt: "A newly married couple wearing wedding garlands, smiling at each other",
-    position: { mobile: "52% 28%", desktop: "center 32%" },
+    image: coupleLotusField,
+    alt: "A smiling Kerala couple in traditional dress among lotus flowers",
+    position: { mobile: "58% 20%", desktop: "center 8%" },
     eyebrow: "Privacy you control",
     heading: "Your Story. Your Perfect Match.",
     description: "Explore meaningful connections and find someone who shares your hopes for tomorrow.",
     credit:
-      "Sabesh Photography LTD (@sabesh) on Unsplash, https://unsplash.com/photos/OzyvCE9a60M (Unsplash License)",
+      "Picnu (@arununnikrishnan) on Unsplash, https://unsplash.com/photos/IyxLjgxNj3s (Unsplash License)",
   },
 ];
 
