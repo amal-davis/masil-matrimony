@@ -1,4 +1,3 @@
-import { cacheLife } from "next/cache";
 import Image from "next/image";
 import Link from "next/link";
 import type { ComponentProps, ComponentType } from "react";
@@ -8,6 +7,8 @@ import { FacebookIcon, InstagramIcon, MapPinIcon, WhatsAppIcon, YouTubeIcon } fr
 import { footerLinks, legalLinks, officeAddress, socialLinks, type SocialPlatform } from "@/lib/site";
 
 import logo from "@/public/images/masil-matrimony-logo.png";
+
+import { CurrentYear } from "./current-year";
 
 const BRAND = "Massil Matrimony";
 
@@ -29,16 +30,6 @@ function FooterHeading({ id, children }: { id: string; children: string }) {
       <span aria-hidden="true" className="mt-3 block h-px w-8 bg-gold" />
     </h2>
   );
-}
-
-/**
- * The current year, cached for a day: Cache Components won't prerender a bare
- * `new Date()`, and computing it on the server avoids a hydration mismatch.
- */
-async function CurrentYear() {
-  "use cache";
-  cacheLife("days");
-  return <>{new Date().getFullYear()}</>;
 }
 
 export function SiteFooter() {

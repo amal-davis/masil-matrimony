@@ -29,6 +29,8 @@ export const metadata: Metadata = {
     siteName: config.siteName,
     url: "/",
   },
+  // Previews (e.g. GitHub Pages with sample profiles) set NEXT_PUBLIC_NOINDEX=true to stay out of search engines.
+  ...(process.env.NEXT_PUBLIC_NOINDEX === "true" && { robots: { index: false, follow: false } }),
 };
 
 export const viewport: Viewport = {

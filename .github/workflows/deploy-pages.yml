@@ -1,0 +1,76 @@
+# Publishes a static preview of the public website (frontend/) to GitHub Pages:
+# https://<owner>.github.io/<repo>/
+#
+# One-time setup: repository Settings → Pages → Build and deployment → Source: "GitHub Actions".
+#
+# The preview has no backend: registration and search show their "not available yet" states, and
+# the sample profiles and success stories are switched on (labelled as samples) for demonstration.
+# It is marked noindex so search engines don't list the sample content.
+name: Deploy frontend preview to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; let an in-progress one finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - id: pages
+        uses: actions/configure-pages@v5
+
+      - run: npm ci
+
+      # A static export can't include routes that need a server at request time:
+      # /status checks the API live, and robots/sitemap only matter on the real domain.
+      - name: Remove server-only routes from the preview
+        run: rm -rf "app/(public)/status" app/robots.ts app/sitemap.ts
+
+      - name: Build static site
+        run: npx next build
+        env:
+          GITHUB_PAGES: "true"
+          NEXT_PUBLIC_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+          NEXT_PUBLIC_SITE_URL: ${{ steps.pages.outputs.base_url }}
+          # Required by the config but never called: no page in the preview talks to the API.
+          NEXT_PUBLIC_API_BASE_URL: ${{ steps.pages.outputs.base_url }}/api/v1
+          NEXT_PUBLIC_SITE_NAME: Massil Matrimony
+          NEXT_PUBLIC_SHOW_DEMO_PROFILES: "true"
+          NEXT_PUBLIC_SHOW_DEMO_STORIES: "true"
+          NEXT_PUBLIC_NOINDEX: "true"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
