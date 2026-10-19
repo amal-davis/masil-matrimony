@@ -1,12 +1,20 @@
 import type { Metadata, Viewport } from "next";
-import { Fraunces, Geist } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 
 import { config } from "@/lib/config";
 
 import "./globals.css";
 
-const sans = Geist({ variable: "--font-sans-loaded", subsets: ["latin"] });
-const display = Fraunces({ variable: "--font-display-loaded", subsets: ["latin"] });
+/**
+ * The one typeface for the whole site, headings included. next/font self-hosts
+ * it and generates the "__Plus_Jakarta_Sans_<hash>" family plus a size-matched
+ * fallback, so text doesn't shift when the font loads.
+ */
+const jakarta = Plus_Jakarta_Sans({
+  variable: "--font-sans-loaded",
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL(config.siteUrl),
@@ -29,7 +37,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${sans.variable} ${display.variable}`}>
+    <html lang="en" className={jakarta.variable}>
       <body className="flex min-h-dvh flex-col">{children}</body>
     </html>
   );

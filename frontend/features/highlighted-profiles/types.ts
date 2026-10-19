@@ -12,6 +12,8 @@ export interface HighlightedProfile {
   profileCode: string;
   /** First name or the display name the member chose to make public. */
   displayName: string;
+  /** Profile.gender; picks the illustrated avatar when there is no public photo. */
+  gender?: "male" | "female";
   age: number;
   /** Highest qualification, e.g. "M.Sc." */
   education: string;

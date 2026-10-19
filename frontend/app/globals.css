@@ -5,8 +5,9 @@
  * text-ink-muted, font-display, ...) instead of raw hex values.
  */
 @theme {
+  /* Plus Jakarta Sans everywhere; font-display is kept as a name so headings can diverge again later. */
   --font-sans: var(--font-sans-loaded), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-display-loaded), ui-serif, Georgia, serif;
+  --font-display: var(--font-sans-loaded), ui-sans-serif, system-ui, sans-serif;
 
   /* Brand: deep maroon */
   --color-brand-50: #fbf3f4;

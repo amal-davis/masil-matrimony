@@ -5,6 +5,7 @@ import { VerifiedIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 
 import type { HighlightedProfile } from "../types";
+import { ProfileAvatar } from "./profile-avatar";
 
 // Photo on top, details below. Cards are ~150–215px wide in the 6-across desktop rows.
 const photoSizes = "(min-width: 1024px) 220px, (min-width: 768px) 30vw, 50vw";
@@ -38,7 +39,7 @@ export function ProfileCard({ profile, href }: { profile: HighlightedProfile; hr
             className="object-cover"
           />
         ) : (
-          <PhotoPlaceholder />
+          <ProfileAvatar profile={profile} />
         )}
       </div>
 
@@ -81,18 +82,5 @@ export function ProfileCard({ profile, href }: { profile: HighlightedProfile; hr
     <article className={cn(cardClasses, "hover:border-field-line/70")} aria-label={profile.displayName}>
       {content}
     </article>
-  );
-}
-
-/** Neutral portrait used when a profile has no public photo. */
-function PhotoPlaceholder() {
-  return (
-    <div className="absolute inset-0 flex items-end justify-center bg-gradient-to-b from-mist to-brand-100">
-      <svg aria-hidden="true" viewBox="0 0 120 150" className="h-[82%] w-auto text-brand-200">
-        <circle cx="60" cy="52" r="26" fill="currentColor" />
-        <path d="M10 150c2-33 23-55 50-55s48 22 50 55Z" fill="currentColor" />
-      </svg>
-      <span className="sr-only">No public photo</span>
-    </div>
   );
 }
