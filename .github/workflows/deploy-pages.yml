@@ -34,7 +34,6 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # Same major as local development: npm 10 (Node 22) misreads this lock file's optional wasm packages.
           node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
@@ -42,7 +41,9 @@ jobs:
       - id: pages
         uses: actions/configure-pages@v5
 
-      - run: npm ci
+      # npm install, not npm ci: the lock file (written on Windows) omits optional WebAssembly-only
+      # packages (@emnapi/*), which npm ci on Linux rejects. Versions in the lock file are still used.
+      - run: npm install --no-audit --no-fund
 
       # A static export can't include routes that need a server at request time:
       # /status checks the API live, and robots/sitemap only matter on the real domain.
