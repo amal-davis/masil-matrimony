@@ -1,23 +1,16 @@
 import Image from "next/image";
 import Link from "next/link";
-import type { ComponentProps, ComponentType } from "react";
 
 import { Container } from "@/components/ui/container";
-import { FacebookIcon, InstagramIcon, MapPinIcon, WhatsAppIcon, YouTubeIcon } from "@/components/ui/icons";
-import { footerLinks, legalLinks, officeAddress, socialLinks, type SocialPlatform } from "@/lib/site";
+import { MapPinIcon } from "@/components/ui/icons";
+import { socialMeta } from "@/components/ui/social-meta";
+import { footerLinks, legalLinks, officeAddress, socialLinks } from "@/lib/site";
 
 import logo from "@/public/images/masil-matrimony-logo.png";
 
 import { CurrentYear } from "./current-year";
 
 const BRAND = "Massil Matrimony";
-
-const socialMeta: Record<SocialPlatform, { label: string; Icon: ComponentType<ComponentProps<"svg">> }> = {
-  instagram: { label: "Instagram", Icon: InstagramIcon },
-  facebook: { label: "Facebook", Icon: FacebookIcon },
-  youtube: { label: "YouTube", Icon: YouTubeIcon },
-  whatsapp: { label: "WhatsApp", Icon: WhatsAppIcon },
-};
 
 const linkClasses =
   "inline-flex min-h-11 items-center rounded-sm text-[0.9375rem] text-ivory/75 transition-colors duration-200 hover:text-gold-soft focus-visible:outline-gold lg:min-h-9";

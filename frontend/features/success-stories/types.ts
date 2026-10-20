@@ -11,6 +11,12 @@ import type { StaticImageData } from "next/image";
 export interface SuccessStory {
   /** Stable key for the card. */
   id: string;
+  /**
+   * The couple's names exactly as they agreed to have them shown, e.g. "Anu & Rahul".
+   * Optional: when missing, cards lead with the heading instead. Never invent names
+   * for a photo; the demo stories deliberately have none.
+   */
+  couple?: string;
   /** Short title, e.g. "A Beautiful Beginning". */
   heading: string;
   /** The couple's own words. */

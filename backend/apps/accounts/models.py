@@ -10,7 +10,7 @@ from .managers import UserManager
 from .roles import STAFF_ROLES, Role
 
 phone_validator = RegexValidator(
-    regex=r"^\+[1-9]\d{7,14}$",
+    regex=r"^\+[1-9]\d{6,14}$",
     message="Enter the phone number in international format, e.g. +919876543210.",
 )
 

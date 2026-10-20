@@ -10,7 +10,7 @@ const demoAllowed =
   process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_SHOW_DEMO_STORIES === "true";
 
 /**
- * Stories for the homepage "Success Stories" slider.
+ * Stories for the homepage "Success Stories" slider and the /success-stories gallery.
  *
  * NOT CONNECTED: the backend has no SuccessStory model or API yet
  * (backend/apps/website_content is a placeholder). When it exists, replace the
@@ -22,8 +22,11 @@ const demoAllowed =
  * Expected response (planned, not implemented): published stories the couple
  * consented to share, already filtered by the backend:
  *
- *   [{ "id": "uuid", "heading": "…", "message": "…",
+ *   [{ "id": "uuid", "couple": "Anu & Rahul", "heading": "…", "message": "…",
  *      "photo": { "url": "https://…", "alt": "…" } | null }]
+ *
+ * The gallery shows every story on one page; add pagination (e.g. ?page=) here
+ * and a "Load more" control once the number of published stories calls for it.
  *
  * Remote photo hosts then need adding to `images.remotePatterns` in next.config.ts.
  */

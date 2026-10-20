@@ -1,4 +1,7 @@
+import Link from "next/link";
+
 import { Container } from "@/components/ui/container";
+import { ArrowRightIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 
 import { getSuccessStories } from "../api";
@@ -40,6 +43,16 @@ export async function SuccessStories() {
 
         <div className="mt-10">
           <TestimonialSlider stories={stories} label="Success stories" />
+        </div>
+
+        <div className="mt-8 flex justify-center sm:mt-10">
+          <Link
+            href="/success-stories"
+            className="group inline-flex h-12 items-center justify-center gap-2 rounded-md border border-wine-600 bg-white px-6 text-[0.9375rem] font-medium text-wine-600 transition-colors duration-200 hover:bg-brand-50 focus-visible:outline-wine-600"
+          >
+            View All Success Stories
+            <ArrowRightIcon className="size-[1.125rem] transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none" />
+          </Link>
         </div>
       </Container>
     </section>

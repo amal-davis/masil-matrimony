@@ -49,7 +49,7 @@ backend/
     audit/         append-only audit trail of sensitive actions
 ```
 
-Only `core` and `accounts` contain code today. The other apps are registered, migratable Django
+Only `core`, `accounts` and `enquiries` contain code today. The other apps are registered, migratable Django
 apps whose `models.py` documents their responsibility; each gains models, serializers, views,
 `urls.py` and tests when its module is implemented.
 

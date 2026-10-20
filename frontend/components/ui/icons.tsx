@@ -165,6 +165,23 @@ export function MapPinIcon(props: IconProps) {
   );
 }
 
+export function MailIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3" y="5" width="18" height="14" rx="2.5" />
+      <path d="m3.8 6.5 8.2 6.2 8.2-6.2" />
+    </Icon>
+  );
+}
+
+export function PhoneIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M8.6 3.5H6A2.5 2.5 0 0 0 3.5 6.2 17 17 0 0 0 17.8 20.5a2.5 2.5 0 0 0 2.7-2.5v-2.6a1 1 0 0 0-.7-1l-3.3-1.1a1 1 0 0 0-1.1.3l-1.3 1.6a12.5 12.5 0 0 1-5.3-5.3l1.6-1.3a1 1 0 0 0 .3-1.1L9.6 4.2a1 1 0 0 0-1-.7Z" />
+    </Icon>
+  );
+}
+
 export function InstagramIcon(props: IconProps) {
   return (
     <Icon {...props}>

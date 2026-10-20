@@ -6,6 +6,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 urlpatterns = [
     path("", include("apps.core.urls")),
     path("auth/", include("apps.accounts.urls")),
+    path("enquiries/", include("apps.enquiries.urls")),
 ]
 
 if settings.API_DOCS_ENABLED:

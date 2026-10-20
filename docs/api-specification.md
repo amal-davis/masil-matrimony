@@ -136,6 +136,30 @@ Reusing a refresh token that was already rotated returns `401`.
 }
 ```
 
+### `POST /enquiries/` — contact form (public, throttled)
+
+Stores a message from the website's Contact page as an `Enquiry` (status `new`) for staff to
+follow up in the Django admin. No authentication, session or CSRF token is involved. Limited to
+`API_THROTTLE_ENQUIRIES` per IP address (default `5/hour`) and 16 KB per request.
+
+```json
+// request
+{"name": "Anu Thomas", "email": "anu@example.com", "phone": "98765 43210",
+ "message": "I'd like to know more about registering.", "website": ""}
+// 201 — only the new enquiry's id; nothing the visitor sent is echoed back
+{"id": "0b6f1c9e-2d4a-4c1e-9a77-5f3e2b1d8c40"}
+// 400
+{"phone": ["Enter a valid phone number, e.g. +91 98765 43210."]}
+```
+
+- `name` 2–100 characters (letters in any script, spaces, `.` `'` `-`); `email` up to 254;
+  `message` 10–2000 characters after trimming.
+- `phone` accepts `+<country code>…`, `00<country code>…`, a 10-digit Indian mobile or an Indian
+  number with a leading `0`; it is stored in E.164 form (`+919876543210`).
+- `website` is a honeypot hidden from people. If it is filled in, the response is still `201`
+  (with `"id": null`) but nothing is stored.
+- Logs record the enquiry id only, never the visitor's details or message.
+
 ### Development-only: `GET /schema/`, `GET /docs/`
 Available when `API_DOCS_ENABLED=True` (default in development, off in production).
 
@@ -154,7 +178,6 @@ Indicative only; finalised per module.
 | Memberships | `GET /memberships/plans/`, `GET /memberships/me/` | Public / Member |
 | Payments | `POST /payments/orders/`, `POST /payments/webhooks/{gateway}/` | Member / gateway (signature-verified) |
 | Notifications | `GET /notifications/`, `POST /notifications/{id}/read/` | Member |
-| Enquiries | `POST /enquiries/` | Public, throttled |
 | Verification queue | `/staff/verification/profiles/`, `…/{id}/approve/` | Verification staff |
 | CRM | `/crm/leads/`, `/crm/leads/{id}/calls/`, `/crm/follow-ups/` | Telecaller (own leads), manager (team) |
 | Content | `/content/pages/{slug}/` (public), `/staff/content/...` | Public / Content manager |

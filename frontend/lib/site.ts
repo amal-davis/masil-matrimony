@@ -1,12 +1,12 @@
 /**
  * Navigation for the public website. Add routes here as pages are built.
  *
- * Only "/" exists today. The other hrefs are the planned public routes and
- * return the 404 page until those pages are added.
+ * "/", "/about-us", "/success-stories" and "/contact" exist today. The other hrefs are the planned public
+ * routes and return the 404 page until those pages are added.
  */
 export const mainNav = [
   { label: "Home", href: "/" },
-  { label: "About Us", href: "/about" },
+  { label: "About Us", href: "/about-us" },
   { label: "Success Stories", href: "/success-stories" },
   { label: "Membership", href: "/membership" },
   { label: "Contact Us", href: "/contact" },
@@ -19,15 +19,16 @@ export const headerActions = {
 } as const;
 
 /**
- * Footer quick links: only destinations that exist. Add "About Us" (/about) and
- * "Contact Us" (/contact) here once those pages are built.
+ * Footer quick links: only destinations that exist.
  */
 export const footerLinks = [
   { label: "Home", href: "/" },
+  { label: "About Us", href: "/about-us" },
   { label: "Search Profiles", href: "/search" },
   { label: "How It Works", href: "/#how-it-works" },
-  { label: "Success Stories", href: "/#success-stories" },
+  { label: "Success Stories", href: "/success-stories" },
   { label: "FAQs", href: "/faq" },
+  { label: "Contact Us", href: "/contact" },
 ] as const;
 
 /**
@@ -42,6 +43,19 @@ export const legalLinks: ReadonlyArray<{ label: string; href: string }> = [];
  * When set, the footer also offers a "View on map" link.
  */
 export const officeAddress: readonly string[] | null = null;
+
+/**
+ * Official contact email, shown on the Contact page as a mailto: link.
+ * NOT CONFIRMED YET: replace `null` with the real address, e.g. "support@<domain>".
+ */
+export const contactEmail: string | null = null;
+
+/**
+ * Official contact phone number, shown on the Contact page as a tel: link.
+ * NOT CONFIRMED YET: replace `null` with the real number, e.g.
+ * { display: "+91 98765 43210", tel: "+919876543210" } (`tel` in E.164, digits only after "+").
+ */
+export const contactPhone: { display: string; tel: string } | null = null;
 
 export type SocialPlatform = "instagram" | "facebook" | "youtube" | "whatsapp";
 

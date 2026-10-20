@@ -8,7 +8,10 @@ import type { SuccessStory } from "../types";
 // One card per view on phones, two from sm, three (up to ~430px in the wide container) from lg.
 const photoSizes = "(min-width: 1024px) 440px, (min-width: 640px) 50vw, 100vw";
 
-/** Success story card: couple photo, heading, then the couple's message. */
+/**
+ * Success story card: couple photo, then the couple's names (or the heading when
+ * no names were shared), then the couple's message.
+ */
 export function TestimonialCard({ story }: { story: SuccessStory }) {
   const [photoFailed, setPhotoFailed] = useState(false);
   const headingId = `${story.id}-heading`;
@@ -37,9 +40,10 @@ export function TestimonialCard({ story }: { story: SuccessStory }) {
       </div>
 
       <div className="flex flex-1 flex-col p-6 xl:p-8">
-        <h3 id={headingId} className="font-sans text-xl leading-snug font-medium text-ink">
-          {story.heading}
+        <h3 id={headingId} className="font-sans text-xl leading-snug font-medium break-words text-ink">
+          {story.couple ?? story.heading}
         </h3>
+        {story.couple && <p className="mt-1 text-[0.9375rem] font-medium text-wine-600">{story.heading}</p>}
         <p className="mt-3 text-base leading-[1.65] text-pretty text-ink-muted lg:text-[1.0625rem]">
           {story.message}
         </p>

@@ -2,23 +2,32 @@ import type { ComponentProps, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
-/** Shared look for text inputs and selects on light surfaces. */
-const controlBase =
-  "h-12 w-full min-w-0 rounded-md border border-field-line bg-white text-base text-ink transition-colors placeholder:text-ink-muted/70 focus:border-wine-600 focus:outline-2 focus:-outline-offset-1 focus:outline-wine-600 disabled:cursor-not-allowed disabled:border-line disabled:bg-surface-muted disabled:text-ink-muted aria-invalid:border-danger";
+/** Shared look for text inputs, selects and textareas on light surfaces. */
+const controlSurface =
+  "w-full min-w-0 rounded-md border border-field-line bg-white text-base text-ink transition-colors placeholder:text-ink-muted/70 focus:border-wine-600 focus:outline-2 focus:-outline-offset-1 focus:outline-wine-600 disabled:cursor-not-allowed disabled:border-line disabled:bg-surface-muted disabled:text-ink-muted aria-invalid:border-danger";
+
+const controlBase = `h-12 ${controlSurface}`;
 
 export const controlClasses = `${controlBase} px-3.5`;
+
+/** Multiline text: grows with the content area instead of the fixed control height. */
+export const textareaClasses = `${controlSurface} min-h-36 resize-y px-3.5 py-3 leading-relaxed`;
 
 /** Accessible attributes linking a control to its error message. */
 export function errorProps(id: string, message?: string) {
   return message ? { "aria-invalid": true as const, "aria-describedby": `${id}-error` } : {};
 }
 
-/** Label above a control, with an optional hint and error message below it. */
+/**
+ * Label above a control, with an optional hint and error message below it.
+ * `required` adds a visual asterisk; also set `required`/`aria-required` on the control itself.
+ */
 export function Field({
   id,
   label,
   error,
   hint,
+  required,
   className,
   children,
 }: {
@@ -26,6 +35,7 @@ export function Field({
   label: string;
   error?: string;
   hint?: string;
+  required?: boolean;
   className?: string;
   children: ReactNode;
 }) {
@@ -33,6 +43,11 @@ export function Field({
     <div className={cn("min-w-0", className)}>
       <label htmlFor={id} className="block text-sm font-medium text-ink">
         {label}
+        {required && (
+          <span aria-hidden="true" className="ml-0.5 text-danger">
+            *
+          </span>
+        )}
       </label>
       <div className="mt-1.5">{children}</div>
       {hint && !error && <p className="mt-1.5 text-sm text-ink-muted">{hint}</p>}

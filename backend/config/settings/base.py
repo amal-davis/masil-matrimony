@@ -143,6 +143,8 @@ REST_FRAMEWORK = {
         "anon": env.str("API_THROTTLE_ANON", default="60/min"),
         "user": env.str("API_THROTTLE_USER", default="300/min"),
         "auth": env.str("API_THROTTLE_AUTH", default="10/min"),
+        # Public contact form, per IP address.
+        "enquiries": env.str("API_THROTTLE_ENQUIRIES", default="5/hour"),
     },
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
