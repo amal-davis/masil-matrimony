@@ -5,6 +5,7 @@ import { useEffect, useRef, type RefObject } from "react";
 
 import { SiteLogo } from "@/components/layout/site-logo";
 import { CloseIcon, SearchIcon } from "@/components/ui/icons";
+import { useSignedIn } from "@/features/auth/use-signed-in";
 import { headerActions, mainNav } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +25,7 @@ type MobileNavDrawerProps = {
 
 /** Left-side navigation drawer for viewports below `lg`. */
 export function MobileNavDrawer({ id, open, onClose, pathname, returnFocusRef }: MobileNavDrawerProps) {
+  const signedIn = useSignedIn();
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
@@ -148,13 +150,30 @@ export function MobileNavDrawer({ id, open, onClose, pathname, returnFocusRef }:
             <SearchIcon className="size-5" />
             {headerActions.search.label}
           </Link>
-          <Link
-            href={headerActions.login.href}
-            onClick={onClose}
-            className={cn(action, "bg-gold text-wine-900 hover:bg-gold-soft")}
-          >
-            {headerActions.login.label}
-          </Link>
+          {signedIn ? (
+            <>
+              <Link
+                href={headerActions.dashboard.href}
+                onClick={onClose}
+                className={cn(action, "bg-gold text-wine-900 hover:bg-gold-soft")}
+              >
+                {headerActions.dashboard.label}
+              </Link>
+              <form method="post" action={headerActions.logout.href} className="flex flex-col">
+                <button type="submit" className={cn(action, "text-ivory hover:bg-white/10")}>
+                  {headerActions.logout.label}
+                </button>
+              </form>
+            </>
+          ) : (
+            <Link
+              href={headerActions.login.href}
+              onClick={onClose}
+              className={cn(action, "bg-gold text-wine-900 hover:bg-gold-soft")}
+            >
+              {headerActions.login.label}
+            </Link>
+          )}
         </div>
       </div>
     </div>

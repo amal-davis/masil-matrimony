@@ -1,131 +1,25 @@
+import { demoProfileDetails } from "@/features/profiles/demo-profiles";
+
 import type { HighlightedProfile } from "./types";
 
 /**
- * TEMPORARY, FICTIONAL demonstration profiles for building the homepage
- * before the profiles API exists. These are not real people and have no
+ * TEMPORARY, FICTIONAL demonstration cards, derived from the demo profile
+ * details (features/profiles/demo-profiles.ts) so a card and the profile page
+ * it opens always show the same person. These are not real people and have no
  * photos on purpose: the card shows an illustrated avatar instead.
  *
  * Remove this file once GET /profiles/highlighted/ is implemented; see api.ts.
  */
-export const demoProfiles: HighlightedProfile[] = [
-  {
-    id: "demo-1",
-    profileCode: "DEMO001",
-    displayName: "Anjali",
-    gender: "female",
-    age: 25,
-    education: "M.Sc.",
-    location: { district: "Thrissur", state: "Kerala" },
-    photo: null,
-  },
-  {
-    id: "demo-2",
-    profileCode: "DEMO002",
-    displayName: "Arjun",
-    gender: "male",
-    age: 29,
-    education: "B.Tech",
-    location: { district: "Ernakulam", state: "Kerala" },
-    photo: null,
-  },
-  {
-    id: "demo-3",
-    profileCode: "DEMO003",
-    displayName: "Meera",
-    gender: "female",
-    age: 27,
-    education: "MBA",
-    location: { district: "Kottayam", state: "Kerala" },
-    photo: null,
-  },
-  {
-    id: "demo-4",
-    profileCode: "DEMO004",
-    displayName: "Rahul",
-    gender: "male",
-    age: 31,
-    education: "M.Com",
-    location: { district: "Kozhikode", state: "Kerala" },
-    photo: null,
-  },
-  {
-    id: "demo-5",
-    profileCode: "DEMO005",
-    displayName: "Nimisha",
-    gender: "female",
-    age: 26,
-    education: "B.Sc. Nursing",
-    location: { district: "Palakkad", state: "Kerala" },
-    photo: null,
-  },
-  {
-    id: "demo-6",
-    profileCode: "DEMO006",
-    displayName: "Joel",
-    gender: "male",
-    age: 30,
-    education: "MCA",
-    location: { district: "Thiruvananthapuram", state: "Kerala" },
-    photo: null,
-  },
-  {
-    id: "demo-7",
-    profileCode: "DEMO007",
-    displayName: "Lakshmi",
-    gender: "female",
-    age: 24,
-    education: "BDS",
-    location: { district: "Alappuzha", state: "Kerala" },
-    photo: null,
-  },
-  {
-    id: "demo-8",
-    profileCode: "DEMO008",
-    displayName: "Aswin",
-    gender: "male",
-    age: 28,
-    education: "B.Arch",
-    location: { district: "Kannur", state: "Kerala" },
-    photo: null,
-  },
-  {
-    id: "demo-9",
-    profileCode: "DEMO009",
-    displayName: "Sneha",
-    gender: "female",
-    age: 26,
-    education: "M.Tech",
-    location: { district: "Kollam", state: "Kerala" },
-    photo: null,
-  },
-  {
-    id: "demo-10",
-    profileCode: "DEMO010",
-    displayName: "Faisal",
-    gender: "male",
-    age: 30,
-    education: "MBBS",
-    location: { district: "Malappuram", state: "Kerala" },
-    photo: null,
-  },
-  {
-    id: "demo-11",
-    profileCode: "DEMO011",
-    displayName: "Diya",
-    gender: "female",
-    age: 25,
-    education: "B.Com",
-    location: { district: "Pathanamthitta", state: "Kerala" },
-    photo: null,
-  },
-  {
-    id: "demo-12",
-    profileCode: "DEMO012",
-    displayName: "Rohan",
-    gender: "male",
-    age: 32,
-    education: "Ph.D.",
-    location: { district: "Idukki", state: "Kerala" },
-    photo: null,
-  },
-];
+export const demoProfiles: HighlightedProfile[] = demoProfileDetails.map(
+  ({ id, profileCode, displayName, gender, age, education, location, photos, isVerified }) => ({
+    id,
+    profileCode,
+    displayName,
+    gender,
+    age,
+    education,
+    location: { city: location.city, district: location.district, state: location.state },
+    photo: photos[0] ?? null,
+    isVerified,
+  }),
+);

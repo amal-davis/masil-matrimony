@@ -36,6 +36,8 @@ export function ProfileCard({ profile, href }: { profile: HighlightedProfile; hr
             alt={`Photo of ${profile.displayName}`}
             fill
             sizes={photoSizes}
+            // Member photos are signed, short-lived API URLs: nothing for the optimiser to cache.
+            unoptimized={profile.photo.url.startsWith("http://") || profile.photo.url.startsWith("https://")}
             className="object-cover"
           />
         ) : (

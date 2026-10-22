@@ -7,6 +7,7 @@ import { useCallback, useRef, useState, useSyncExternalStore } from "react";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
 import { SiteLogo } from "@/components/layout/site-logo";
 import { MenuIcon, SearchIcon, UserIcon } from "@/components/ui/icons";
+import { useSignedIn } from "@/features/auth/use-signed-in";
 import { headerActions, mainNav } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
@@ -23,8 +24,13 @@ const getServerScrolled = () => false;
 const iconButton =
   "inline-flex size-11 shrink-0 items-center justify-center rounded-md text-ivory transition-colors duration-200 hover:bg-white/10 hover:text-gold focus-visible:outline-gold";
 
+// No display utility here: the Login link is hidden below `lg` and must not get a competing `inline-flex`.
+const accountButton =
+  "h-10 items-center gap-2 rounded-md border border-gold/80 px-5 text-[0.9375rem] font-medium text-gold-soft transition-colors duration-200 hover:bg-gold hover:text-wine-900 focus-visible:outline-gold";
+
 export function SiteHeader() {
   const pathname = usePathname();
+  const signedIn = useSignedIn();
   const scrolled = useSyncExternalStore(subscribeToScroll, getScrolled, getServerScrolled);
   const [open, setOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -77,13 +83,17 @@ export function SiteHeader() {
               <SearchIcon className="size-[1.375rem]" />
             </Link>
 
-            <Link
-              href={headerActions.login.href}
-              className="hidden h-10 items-center gap-2 rounded-md border border-gold/80 px-5 text-[0.9375rem] font-medium text-gold-soft transition-colors duration-200 hover:bg-gold hover:text-wine-900 focus-visible:outline-gold lg:inline-flex"
-            >
-              <UserIcon className="size-[1.125rem]" />
-              {headerActions.login.label}
-            </Link>
+            {signedIn ? (
+              <Link href={headerActions.dashboard.href} className={cn(accountButton, "hidden lg:inline-flex")}>
+                <UserIcon className="size-[1.125rem]" />
+                {headerActions.dashboard.label}
+              </Link>
+            ) : (
+              <Link href={headerActions.login.href} className={cn(accountButton, "hidden lg:inline-flex")}>
+                <UserIcon className="size-[1.125rem]" />
+                {headerActions.login.label}
+              </Link>
+            )}
 
             <button
               ref={toggleRef}

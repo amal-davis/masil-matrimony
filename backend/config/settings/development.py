@@ -27,3 +27,6 @@ REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] = [  # noqa: F405
 ]
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+# Login codes are written to the server log until a real SMS provider is configured.
+SMS_PROVIDER = env.str("SMS_PROVIDER", default="console").strip().lower()

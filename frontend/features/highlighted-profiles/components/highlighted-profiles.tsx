@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { Container } from "@/components/ui/container";
 import { SEARCH_RESULTS_PATH } from "@/features/partner-search/schema";
+import { profilePath } from "@/features/profiles/paths";
 
 import { getHighlightedProfiles, HIGHLIGHTED_PROFILE_COUNT } from "../api";
 import type { HighlightedProfilesResult } from "../types";
@@ -43,8 +44,7 @@ export async function HighlightedProfiles() {
         <ul className="mt-10 grid auto-rows-fr grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3 lg:grid-cols-6 lg:gap-4 xl:gap-5">
           {profiles.map((profile) => (
             <li key={profile.id} className="min-w-0">
-              {/* No profile page exists yet, so cards are not links. */}
-              <ProfileCard profile={profile} />
+              <ProfileCard profile={profile} href={profilePath(profile.profileCode)} />
             </li>
           ))}
         </ul>

@@ -9,6 +9,8 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    // Dashboard UI preview build (scripts/dashboard-preview.mjs).
+    ".next-preview/**",
     "out/**",
     "build/**",
     "next-env.d.ts",

@@ -6,6 +6,8 @@ explicitly so that MySQL is always a deliberate choice.
 """
 from datetime import timedelta
 
+from django.core.exceptions import ImproperlyConfigured
+
 from config.env import BASE_DIR, env, require
 
 # --------------------------------------------------------------------------
@@ -145,6 +147,12 @@ REST_FRAMEWORK = {
         "auth": env.str("API_THROTTLE_AUTH", default="10/min"),
         # Public contact form, per IP address.
         "enquiries": env.str("API_THROTTLE_ENQUIRIES", default="5/hour"),
+        # SMS login, per IP address. Per-number limits are enforced separately (OTP_* below).
+        "otp_request": env.str("API_THROTTLE_OTP_REQUEST", default="10/hour"),
+        "otp_verify": env.str("API_THROTTLE_OTP_VERIFY", default="20/hour"),
+        # Per member.
+        "photo_upload": env.str("API_THROTTLE_PHOTO_UPLOAD", default="30/hour"),
+        "interest_send": env.str("API_THROTTLE_INTEREST_SEND", default="100/day"),
     },
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
@@ -166,6 +174,38 @@ SIMPLE_JWT = {
     "USER_ID_FIELD": "public_id",
     "USER_ID_CLAIM": "user_id",
 }
+
+# --------------------------------------------------------------------------
+# SMS one-time codes (apps/accounts/otp.py, apps/notifications/sms.py)
+# --------------------------------------------------------------------------
+OTP_CODE_LENGTH = env.int("OTP_CODE_LENGTH", default=6)
+OTP_TTL_SECONDS = env.int("OTP_TTL_SECONDS", default=300)
+OTP_RESEND_COOLDOWN_SECONDS = env.int("OTP_RESEND_COOLDOWN_SECONDS", default=60)
+OTP_MAX_REQUESTS_PER_HOUR = env.int("OTP_MAX_REQUESTS_PER_HOUR", default=5)
+OTP_MAX_VERIFY_ATTEMPTS = env.int("OTP_MAX_VERIFY_ATTEMPTS", default=5)
+
+if not 4 <= OTP_CODE_LENGTH <= 10:
+    raise ImproperlyConfigured("OTP_CODE_LENGTH must be between 4 and 10.")
+
+# "" (not configured), "msg91", or the local-only "console" / "locmem".
+SMS_PROVIDER = env.str("SMS_PROVIDER", default="").strip().lower()
+SMS_TIMEOUT_SECONDS = env.int("SMS_TIMEOUT_SECONDS", default=10)
+MSG91_AUTH_KEY = env.str("MSG91_AUTH_KEY", default="")
+MSG91_OTP_TEMPLATE_ID = env.str("MSG91_OTP_TEMPLATE_ID", default="")
+# Name of the variable that holds the code in the MSG91 template, e.g. ##otp## -> "otp".
+MSG91_OTP_VARIABLE = env.str("MSG91_OTP_VARIABLE", default="otp")
+
+# --------------------------------------------------------------------------
+# Member photos (apps/profiles/photos.py)
+# --------------------------------------------------------------------------
+# Largest accepted upload and the number of photos (excluding rejected ones) per profile.
+PROFILE_PHOTO_MAX_BYTES = env.int("PROFILE_PHOTO_MAX_BYTES", default=8 * 1024 * 1024)
+PROFILE_MAX_PHOTOS = env.int("PROFILE_MAX_PHOTOS", default=10)
+# How long a signed photo URL keeps working.
+PHOTO_URL_TTL_SECONDS = env.int("PHOTO_URL_TTL_SECONDS", default=3600)
+# Public base URL of this API (e.g. https://api.example.com) for building photo URLs
+# when requests arrive through an internal address; empty = use the request's host.
+API_PUBLIC_URL = env.str("API_PUBLIC_URL", default="")
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "Matrimony Platform API",

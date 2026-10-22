@@ -234,3 +234,48 @@ export function VerifiedIcon(props: IconProps) {
     </Icon>
   );
 }
+
+export function CheckIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m5 12.5 4.5 4.5L19 7.5" />
+    </Icon>
+  );
+}
+
+export function ChevronDownIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m6 9.5 6 6 6-6" />
+    </Icon>
+  );
+}
+
+export function GemIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M7 4.5h10l4 5-9 10.5L3 9.5l4-5Z" />
+      <path d="M3 9.5h18M9.5 4.5 8 9.5l4 10.5 4-10.5-1.5-5" />
+    </Icon>
+  );
+}
+
+export function HomeIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 10.5 12 4l8 6.5" />
+      <path d="M6 9v10.5h12V9" />
+      <path d="M10 19.5v-5h4v5" />
+    </Icon>
+  );
+}
+
+export function InfoIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 11v5.5" />
+      <circle cx="12" cy="7.8" r=".9" fill="currentColor" stroke="none" />
+    </Icon>
+  );
+}

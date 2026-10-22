@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
-    "flags": "node scripts/copy-flags.mjs"
+    "flags": "node scripts/copy-flags.mjs",
+    "preview:build": "node scripts/dashboard-preview.mjs build",
+    "preview:start": "node scripts/dashboard-preview.mjs start"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

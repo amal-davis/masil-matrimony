@@ -1,16 +1,10 @@
+import { DEMO_PROFILES_ALLOWED } from "@/features/profiles/api";
+
 import { demoProfiles } from "./demo-profiles";
 import type { HighlightedProfilesResult } from "./types";
 
 /** Two rows of six on desktop. */
 export const HIGHLIGHTED_PROFILE_COUNT = 12;
-
-/**
- * Demo profiles are fictional, so they must never reach real visitors by
- * accident: they show in development, or in a production build only when
- * NEXT_PUBLIC_SHOW_DEMO_PROFILES=true is set deliberately (e.g. a staging demo).
- */
-const demoAllowed =
-  process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_SHOW_DEMO_PROFILES === "true";
 
 /**
  * Profiles for the homepage "Highlighted Profiles" section.
@@ -36,5 +30,5 @@ const demoAllowed =
 export async function getHighlightedProfiles(
   limit = HIGHLIGHTED_PROFILE_COUNT,
 ): Promise<HighlightedProfilesResult> {
-  return { profiles: demoAllowed ? demoProfiles.slice(0, limit) : [], source: "demo" };
+  return { profiles: DEMO_PROFILES_ALLOWED ? demoProfiles.slice(0, limit) : [], source: "demo" };
 }

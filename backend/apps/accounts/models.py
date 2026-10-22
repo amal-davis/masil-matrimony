@@ -76,3 +76,39 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def has_role(self, *roles):
         return self.is_active and self.role in roles
+
+
+class PhoneOTPChallenge(models.Model):
+    """
+    One one-time code sent (or, for unknown numbers, pretended to be sent) by SMS.
+
+    The code itself is never stored: `code_hash` is an HMAC bound to this
+    challenge, its purpose and its phone number (see apps.accounts.otp).
+    A challenge is usable once, until it expires, is replaced by a newer code
+    for the same number, or has too many wrong guesses.
+    """
+
+    class Purpose(models.TextChoices):
+        LOGIN = "login", "Login"
+
+    # The opaque reference the client sends back with the code.
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    purpose = models.CharField(max_length=16, choices=Purpose.choices)
+    phone_number = models.CharField(max_length=16)
+    # Null when no eligible account has this number: nothing is sent and verification always fails.
+    user = models.ForeignKey(
+        "accounts.User", null=True, blank=True, on_delete=models.CASCADE, related_name="+"
+    )
+    code_hash = models.CharField(max_length=64)
+    created_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField()
+    failed_attempts = models.PositiveSmallIntegerField(default=0)
+    used_at = models.DateTimeField(null=True, blank=True)
+    invalidated_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["phone_number", "purpose", "created_at"])]
+        verbose_name = "phone OTP challenge"
+
+    def __str__(self):
+        return f"{self.purpose} code for …{self.phone_number[-4:]}"

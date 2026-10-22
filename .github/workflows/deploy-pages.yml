@@ -46,9 +46,14 @@ jobs:
       - run: npm install --no-audit --no-fund
 
       # A static export can't include routes that need a server at request time:
-      # /status checks the API live, and robots/sitemap only matter on the real domain.
+      # /status checks the API live, /login, /auth/logout and the member dashboard use Server
+      # Actions, cookies, route handlers and proxy.ts, and robots/sitemap only matter on the real
+      # domain. Profile pages import the dashboard's Server Actions for real members, so they get
+      # a stub (sample profiles in the preview never call it).
       - name: Remove server-only routes from the preview
-        run: rm -rf "app/(public)/status" app/robots.ts app/sitemap.ts
+        run: |
+          rm -rf "app/(public)/status" "app/(public)/login" "app/(dashboard)" app/auth proxy.ts app/robots.ts app/sitemap.ts
+          cp features/dashboard/actions.preview.ts features/dashboard/actions.ts
 
       - name: Build static site
         run: npx next build

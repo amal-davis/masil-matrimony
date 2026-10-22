@@ -120,6 +120,50 @@ Reusing a refresh token that was already rotated returns `401`.
 {}
 ```
 
+### `POST /auth/otp/request/` — send an SMS login code (public, throttled)
+
+Members only (`role=member`, active). Staff sign in with email and password. Indian mobile
+numbers only: `+91` followed by 10 digits starting with 6–9.
+
+```json
+// request: E.164 Indian mobile number
+{"phone_number": "+919876543210"}
+// 202 — identical whether or not the number is registered (no SMS is sent if it isn't)
+{"challenge_id": "<uuid>", "code_length": 6, "expires_in": 300, "resend_after": 60}
+// 400
+{"phone_number": ["Enter an Indian mobile number in international format, e.g. +919876543210."]}
+// 429 (also sets Retry-After)
+{"detail": "Please wait before requesting another code.", "code": "otp_rate_limited", "retry_after": 42}
+// 503 — no SMS provider configured (code "otp_unavailable") or the provider refused (code "otp_delivery_failed")
+{"detail": "…", "code": "otp_unavailable"}
+```
+
+- Per number: `OTP_RESEND_COOLDOWN_SECONDS` (60) between codes and `OTP_MAX_REQUESTS_PER_HOUR` (5).
+  Per IP: `API_THROTTLE_OTP_REQUEST` (`10/hour`).
+- A new code invalidates any earlier unused code for the number. The code is never returned.
+
+### `POST /auth/otp/verify/` — exchange the code for tokens (public, throttled)
+
+```json
+// request
+{"challenge_id": "<uuid>", "code": "123456"}
+// 200 — same token pair as /auth/token/; marks the phone number verified
+{"access": "<jwt>", "refresh": "<jwt>"}
+// 400 — `code` is one of the values below
+{"detail": "That code is incorrect.", "code": "otp_incorrect", "attempts_remaining": 4}
+```
+
+| `code` | Meaning | Can the same challenge be retried? |
+|--------|---------|------------------------------------|
+| `otp_incorrect` | Wrong code (always, for unregistered numbers) | Yes, until attempts run out |
+| `otp_expired` | Older than `OTP_TTL_SECONDS` (300) | No |
+| `otp_used` | Already used to sign in | No |
+| `otp_attempts_exceeded` | `OTP_MAX_VERIFY_ATTEMPTS` (5) wrong guesses | No |
+| `otp_invalid` | Unknown or superseded challenge, or the account changed | No |
+
+Per IP: `API_THROTTLE_OTP_VERIFY` (`20/hour`). Malformed input (`400` with field errors) is not
+counted as a guess.
+
 ### `GET /auth/me/` — current user (authenticated)
 
 ```json
@@ -160,6 +204,33 @@ follow up in the Django admin. No authentication, session or CSRF token is invol
   (with `"id": null`) but nothing is stored.
 - Logs record the enquiry id only, never the visitor's details or message.
 
+### Member endpoints (member dashboard)
+
+All require a member's access token (`role=member`; staff get `403`). The acting member is always
+taken from the token, never from the request body. Lists are paginated (`?page=`, 20 per page:
+`{"count", "next", "previous", "results"}`). Endpoints that need the member's own profile answer
+`404 {"detail": "...", "code": "no_profile"}` until it is created. Rule violations answer
+`409 {"detail": "...", "code": "..."}` with a message safe to show.
+
+| Method and path | Purpose |
+|-----------------|---------|
+| `GET /dashboard/summary/` | Overview: profile status and completion, membership, interest counts, shortlist count, recent interests and notifications. All counts come from stored records. |
+| `GET /profiles/me/` · `POST` · `PATCH` | Own profile (all fields, raw choice values). `POST` creates it (`created_for`, `display_name`, `gender`, `date_of_birth` required; minimum age 18 for brides, 21 for grooms). `PATCH` updates only the fields sent. `display_name`, `gender` and `date_of_birth` can't change once submitted. |
+| `PATCH /profiles/me/partner-preference/` | Partner preferences (age and height ranges, marital statuses, religions, communities, free-text locations, education, occupation, notes). |
+| `POST /profiles/me/submit/` | Submit a complete draft (or a profile returned for changes) for staff review. `409 incomplete` lists what's missing. |
+| `GET /profiles/me/photos/` · `POST` (multipart `photo`) | Own photos with review status / upload one. JPEG, PNG or WebP, decoded and re-encoded server-side, at most `PROFILE_PHOTO_MAX_BYTES` (8 MB) and `PROFILE_MAX_PHOTOS` (10) per profile. Throttle `API_THROTTLE_PHOTO_UPLOAD`. |
+| `DELETE /profiles/me/photos/{id}/` · `POST …/primary/` | Remove a photo / make it the main photo. Another member's photo id is `404`. |
+| `GET /profiles/photo-files/{token}/` | The image file for a signed URL that expires after `PHOTO_URL_TTL_SECONDS`. Photo URLs in every response are of this form; files are never publicly listed. |
+| `GET /profiles/matches/` | Approved, visible profiles of the opposite gender matching the member's partner preferences, newest first. No compatibility scoring. |
+| `GET /profiles/{code}/` | Another member's profile, privacy-filtered (age, never date of birth; no contact details; income only if the member chose to show it; photos per their photo privacy), plus the viewer's interest and shortlist state. Hidden/unapproved profiles are `404`. |
+| `POST /interests/` `{"profile_code"}` | Send an interest. Needs an approved own profile (`403 profile_not_active`); one per pair (`409 duplicate`); `409 reverse_exists` if they already sent you one. Throttle `API_THROTTLE_INTEREST_SEND`. |
+| `GET /interests/received/` · `GET /interests/sent/` (`?status=pending\|accepted\|declined\|withdrawn`) | Interests by direction. |
+| `POST /interests/{id}/accept/` · `…/decline/` | Receiver only, pending only (`409 not_pending` otherwise). Notifies the sender. |
+| `POST /interests/{id}/withdraw/` | Sender only, pending only. A withdrawn interest can be sent again. |
+| `GET /shortlist/` · `POST /shortlist/` `{"profile_code"}` · `DELETE /shortlist/{code}/` | Shortlist; adding twice is harmless. |
+| `GET /memberships/me/` | Current subscription (or `null`), history, and `online_payment_available` (always `false` until a payment gateway is integrated). |
+| `GET /notifications/` (`?unread=1`) · `POST /notifications/{id}/read/` · `POST /notifications/read-all/` | In-app notifications, with `unread_count`. |
+
 ### Development-only: `GET /schema/`, `GET /docs/`
 Available when `API_DOCS_ENABLED=True` (default in development, off in production).
 
@@ -169,15 +240,12 @@ Indicative only; finalised per module.
 
 | Area | Endpoints | Access |
 |------|-----------|--------|
-| Registration / OTP | `POST /auth/register/`, `POST /auth/otp/request/`, `POST /auth/otp/verify/`, password reset | Public, throttled |
-| Own profile | `GET/PATCH /profiles/me/`, photos, preferences, privacy settings | Member |
+| Registration | `POST /auth/register/` (with phone OTP), password reset | Public, throttled |
 | Search | `GET /profiles/search/?age_min=&age_max=&religion=&location=…` | Member (limited public preview) |
-| Profile detail | `GET /profiles/{id}/` (privacy-filtered) | Member |
-| Interests | `POST /interests/`, `POST /interests/{id}/accept/`, `…/decline/` | Member |
-| Shortlist / blocks / reports | `/shortlists/`, `/blocks/`, `/reports/` | Member |
-| Memberships | `GET /memberships/plans/`, `GET /memberships/me/` | Public / Member |
+| Blocks / reports / profile views | `/blocks/`, `/reports/`, `/profile-views/` | Member |
+| Contact access | `POST /profiles/{code}/contact/` (counts against the membership's contact quota) | Member with a plan |
+| Memberships | `GET /memberships/plans/` | Public |
 | Payments | `POST /payments/orders/`, `POST /payments/webhooks/{gateway}/` | Member / gateway (signature-verified) |
-| Notifications | `GET /notifications/`, `POST /notifications/{id}/read/` | Member |
 | Verification queue | `/staff/verification/profiles/`, `…/{id}/approve/` | Verification staff |
 | CRM | `/crm/leads/`, `/crm/leads/{id}/calls/`, `/crm/follow-ups/` | Telecaller (own leads), manager (team) |
 | Content | `/content/pages/{slug}/` (public), `/staff/content/...` | Public / Content manager |

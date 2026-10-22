@@ -11,7 +11,10 @@ from .base import (
     ALLOWED_HOSTS,
     CORS_ALLOWED_ORIGINS,
     CSRF_TRUSTED_ORIGINS,
+    MSG91_AUTH_KEY,
+    MSG91_OTP_TEMPLATE_ID,
     SECRET_KEY,
+    SMS_PROVIDER,
 )
 
 DEBUG = False
@@ -38,6 +41,13 @@ for _name, _origins in (
             raise ImproperlyConfigured(
                 f"{_name} entries must be explicit https:// origins in production; got {_origin!r}."
             )
+
+# The development and test SMS mocks must never handle real login codes.
+# An empty SMS_PROVIDER is allowed: SMS login then answers 503 until one is configured.
+if SMS_PROVIDER in ("console", "locmem"):
+    raise ImproperlyConfigured(f"SMS_PROVIDER={SMS_PROVIDER!r} is for development and tests only.")
+if SMS_PROVIDER == "msg91" and not (MSG91_AUTH_KEY and MSG91_OTP_TEMPLATE_ID):
+    raise ImproperlyConfigured("SMS_PROVIDER=msg91 requires MSG91_AUTH_KEY and MSG91_OTP_TEMPLATE_ID.")
 
 # --- HTTPS ---------------------------------------------------------------
 SECURE_SSL_REDIRECT = env.bool("DJANGO_SECURE_SSL_REDIRECT", default=True)

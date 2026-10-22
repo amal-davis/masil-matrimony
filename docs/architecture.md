@@ -49,7 +49,8 @@ backend/
     audit/         append-only audit trail of sensitive actions
 ```
 
-Only `core`, `accounts` and `enquiries` contain code today. The other apps are registered, migratable Django
+`core`, `accounts`, `enquiries`, `profiles`, `interactions`, `memberships` and `notifications` contain
+code today (the last four power the member dashboard, see section 4). The other apps are registered, migratable Django
 apps whose `models.py` documents their responsibility; each gains models, serializers, views,
 `urls.py` and tests when its module is implemented.
 
@@ -170,7 +171,7 @@ built-in `Group`/`Permission` models, which the custom user model supports via `
 - Logout = blacklist the refresh token.
 - Token endpoints are rate-limited (`API_THROTTLE_AUTH`, default 10/min per client).
 
-### Web browser strategy (to implement with the login UI)
+### Web browser strategy (implemented)
 
 The browser never sees or stores tokens in JavaScript-accessible storage (no `localStorage`).
 
@@ -179,7 +180,9 @@ The browser never sees or stores tokens in JavaScript-accessible storage (no `lo
 3. It stores the access and refresh tokens in **HTTP-only, `Secure`, `SameSite=Lax`** cookies
    scoped to the website domain.
 4. Server Components and Route Handlers read the cookie and call Django with
-   `Authorization: Bearer <access>`. Expired access tokens are refreshed server-side.
+   `Authorization: Bearer <access>`. Expired access tokens are refreshed server-side by
+   `frontend/proxy.ts` before `/dashboard/*` and `/profile/*` requests; `/dashboard/*` without a
+   session redirects to `/login?next=…`.
 5. Mutations go through Server Actions or Route Handlers, which verify the `Origin` header
    (built into Server Actions); `SameSite=Lax` blocks cross-site cookie sending.
 6. Logout blacklists the refresh token and clears the cookies.
@@ -194,11 +197,44 @@ Mobile apps call `/api/v1/auth/token/` directly and send `Authorization: Bearer 
 Tokens are stored in the platform secure store (iOS Keychain, Android Keystore/EncryptedSharedPreferences),
 never in plain preferences or files. Refresh rotation and blacklisting apply identically.
 
-### OTP (planned)
+### SMS OTP login (implemented for members)
 
-Phone OTP for registration/login will be implemented in `accounts` + `notifications`:
-hashed OTP codes with short expiry, attempt limits, per-number and per-IP throttling, and a
-pluggable SMS provider selected by `SMS_PROVIDER` with credentials only in environment variables.
+- `apps/accounts/otp.py` issues and checks codes; `PhoneOTPChallenge` stores only an HMAC of each
+  code (keyed with `SECRET_KEY`, bound to the challenge, purpose and number). Codes come from
+  `secrets`, expire after `OTP_TTL_SECONDS`, are single-use, allow `OTP_MAX_VERIFY_ATTEMPTS`
+  wrong guesses, and a new code invalidates older ones.
+- Per-number cooldown and hourly cap are counted in MySQL, so they hold across API processes;
+  per-IP limits use DRF scoped throttles (local-memory cache: per process until Redis is added).
+- Unregistered numbers get the same `202` and a challenge that can never verify, so the endpoint
+  doesn't reveal who is registered. Staff accounts can't use phone login.
+- `apps/notifications/sms.py` sends via `SMS_PROVIDER`: `msg91` (DLT template), or `console`
+  (development, codes in the server log) / `locmem` (tests). Production refuses the last two;
+  unset means SMS login answers `503`.
+- The website follows the browser strategy above: `features/auth/actions.ts` (Server Actions)
+  calls the OTP endpoints server-to-server and stores the token pair in HTTP-only cookies
+  (`mm_access`, `mm_refresh`) plus a readable `mm_signed_in=1` display flag;
+  `POST /auth/logout` (`app/auth/logout/route.ts`) blacklists the refresh token and clears them.
+- Run `python manage.py purge_otp_challenges` daily to delete old challenges.
+
+### Member dashboard (implemented)
+
+- **Frontend:** `app/(dashboard)/dashboard/*` with its own shell (sidebar on large screens, bottom
+  bar and drawer on phones). Pages are Server Components that read data through
+  `features/dashboard/server-api.ts`; every change goes through `features/dashboard/actions.ts`
+  (Server Actions) and the page re-renders from the API's answer. Photo uploads use the Route Handler
+  `app/(dashboard)/dashboard/photos/upload/route.ts` so the browser can show progress.
+- **Backend:** `profiles` (Profile, PartnerPreference, ProfilePhoto), `interactions` (Interest,
+  Shortlist), `memberships` (Subscription; plan ids match `frontend/features/packages/packages.ts`),
+  `notifications` (in-app Notification). Rules live in each app's `services.py`; interest changes
+  lock the row in a transaction. Endpoints are listed in [api-specification.md](api-specification.md).
+- **Review:** new profiles are `draft` until the member submits them, then staff approve or request
+  changes in the Django admin; only `active`, visible profiles are shown to other members. Photos are
+  `pending` until approved. Name, gender and date of birth are fixed once a profile is submitted.
+- **Photos:** decoded with Pillow, re-encoded as JPEG (metadata dropped) under random names in
+  `MEDIA_ROOT`, and served only through signed URLs that expire. In production, keep `MEDIA_ROOT`
+  on persistent storage (or switch to private object storage) and never expose it as a static path.
+- **Memberships:** staff record a subscription after an offline payment and activate it in the admin;
+  there is no online payment, and nothing in the browser can activate a plan.
 
 ## 5. Security baseline
 

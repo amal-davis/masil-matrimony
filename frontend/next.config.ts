@@ -8,6 +8,9 @@ import type { NextConfig } from "next";
 const githubPages = process.env.GITHUB_PAGES === "true";
 
 const nextConfig: NextConfig = {
+  // The dashboard UI preview (scripts/dashboard-preview.mjs) builds into its own
+  // folder so it never replaces the normal build.
+  ...(process.env.NEXT_DIST_DIR && { distDir: process.env.NEXT_DIST_DIR }),
   env: {
     // Footer copyright year (see components/layout/current-year.tsx).
     NEXT_PUBLIC_BUILD_YEAR: String(new Date().getFullYear()),

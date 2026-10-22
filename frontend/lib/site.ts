@@ -1,21 +1,22 @@
 /**
  * Navigation for the public website. Add routes here as pages are built.
  *
- * "/", "/about-us", "/success-stories" and "/contact" exist today. The other hrefs are the planned public
- * routes and return the 404 page until those pages are added.
+ * Every route listed here exists.
  */
 export const mainNav = [
   { label: "Home", href: "/" },
   { label: "About Us", href: "/about-us" },
   { label: "Success Stories", href: "/success-stories" },
-  { label: "Membership", href: "/membership" },
+  { label: "Membership", href: "/our-packages" },
   { label: "Contact Us", href: "/contact" },
 ] as const;
 
-/** Header actions. Both pages are planned and not built yet. */
+/** Header actions. `logout` is a POST-only route handler (app/auth/logout/route.ts), shown once signed in. */
 export const headerActions = {
   search: { label: "Search profiles", href: "/search" },
   login: { label: "Login", href: "/login" },
+  logout: { label: "Log out", href: "/auth/logout" },
+  dashboard: { label: "My Dashboard", href: "/dashboard" },
 } as const;
 
 /**
@@ -27,6 +28,7 @@ export const footerLinks = [
   { label: "Search Profiles", href: "/search" },
   { label: "How It Works", href: "/#how-it-works" },
   { label: "Success Stories", href: "/success-stories" },
+  { label: "Membership Packages", href: "/our-packages" },
   { label: "FAQs", href: "/faq" },
   { label: "Contact Us", href: "/contact" },
 ] as const;
