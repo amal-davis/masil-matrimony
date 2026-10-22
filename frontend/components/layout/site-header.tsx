@@ -8,7 +8,6 @@ import { MobileNavDrawer } from "@/components/layout/mobile-nav-drawer";
 import { SiteLogo } from "@/components/layout/site-logo";
 import { MenuIcon, SearchIcon, UserIcon } from "@/components/ui/icons";
 import { useSignedIn } from "@/features/auth/use-signed-in";
-import { DASHBOARD_PREVIEW } from "@/features/dashboard/preview-flag";
 import { headerActions, mainNav } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
@@ -31,8 +30,7 @@ const accountButton =
 
 export function SiteHeader() {
   const pathname = usePathname();
-  // Dashboard preview builds (e.g. the GitHub Pages preview) link straight to the sample dashboard.
-  const signedIn = useSignedIn() || DASHBOARD_PREVIEW;
+  const signedIn = useSignedIn();
   const scrolled = useSyncExternalStore(subscribeToScroll, getScrolled, getServerScrolled);
   const [open, setOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);

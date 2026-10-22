@@ -26,8 +26,7 @@ type MobileNavDrawerProps = {
 
 /** Left-side navigation drawer for viewports below `lg`. */
 export function MobileNavDrawer({ id, open, onClose, pathname, returnFocusRef }: MobileNavDrawerProps) {
-  // Dashboard preview builds (e.g. the GitHub Pages preview) link straight to the sample dashboard.
-  const signedIn = useSignedIn() || DASHBOARD_PREVIEW;
+  const signedIn = useSignedIn();
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);

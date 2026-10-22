@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { ChevronDownIcon, ChevronRightIcon, CloseIcon, HomeIcon, MenuIcon, UserIcon } from "@/components/ui/icons";
+import { SIGNED_IN_COOKIE } from "@/features/auth/constants";
 import { config } from "@/lib/config";
 import { headerActions } from "@/lib/site";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,11 @@ import type { ShellData } from "../types";
 import { BellIcon, DotsIcon, GearIcon, LifebuoyIcon, LogoutIcon, SidebarIcon } from "./icons";
 
 const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** Preview builds: forget the display-only "signed in" flag set by the preview login. */
+function clearPreviewSignIn() {
+  document.cookie = `${SIGNED_IN_COOKIE}=; path=/; max-age=0; samesite=lax`;
+}
 const COLLAPSE_KEY = "mm-dashboard-sidebar-collapsed";
 
 // --- Live data for the frame ----------------------------------------------
@@ -196,7 +202,12 @@ function LogoutForm({ className, collapsed = false }: { className?: string; coll
   // A preview has no session to end: leave it for the website instead.
   if (DASHBOARD_PREVIEW) {
     return (
-      <Link href="/" className={cn("group relative", className)} aria-label={collapsed ? "Exit preview" : undefined}>
+      <Link
+        href="/"
+        onClick={clearPreviewSignIn}
+        className={cn("group relative", className)}
+        aria-label={collapsed ? "Exit preview" : undefined}
+      >
         <LogoutIcon className="size-5 shrink-0" />
         {!collapsed && "Exit preview"}
       </Link>
@@ -303,7 +314,15 @@ function AccountMenu({ data }: { data: ShellData | null }) {
           </div>
           <div className="border-t border-line pt-1.5">
             {DASHBOARD_PREVIEW ? (
-              <Link role="menuitem" onClick={choose} href="/" className={item}>
+              <Link
+                role="menuitem"
+                onClick={() => {
+                  clearPreviewSignIn();
+                  choose();
+                }}
+                href="/"
+                className={item}
+              >
                 <LogoutIcon className="size-5 text-ink-muted" /> Exit preview
               </Link>
             ) : (

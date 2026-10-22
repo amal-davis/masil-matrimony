@@ -2,13 +2,18 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 
 import { controlClasses, ErrorText } from "@/components/ui/form-field";
 import { PhoneIcon, ShieldCheckIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 
+import { DASHBOARD_PREVIEW } from "@/features/dashboard/preview-flag";
+
 import { requestLoginCode, verifyLoginCode, type VerifyFailure } from "../actions";
+import { SIGNED_IN_COOKIE } from "../constants";
+import { safeRedirectPath } from "../redirect";
 import {
   loginPhoneSchema,
   maskPhoneNumber,
@@ -127,6 +132,7 @@ function useCountdown(until: number) {
  */
 export function LoginFlow() {
   const id = useId();
+  const router = useRouter();
   const fieldId = (name: string) => `${id}-${name}`;
 
   const [challenge, setChallenge] = useState<Challenge | null>(null);
@@ -161,6 +167,16 @@ export function LoginFlow() {
   const sendCode = (phoneNumber: string, resend: boolean) =>
     startSending(async () => {
       setNotice(null);
+      if (DASHBOARD_PREVIEW) {
+        // Design preview: nothing is sent anywhere; go straight to the code step.
+        setChallenge({ challengeId: "preview", phoneNumber, codeLength: 6, expiresIn: 300 });
+        setResendAt(Date.now() + 30_000);
+        setCode("");
+        setCodeError(undefined);
+        setDead(false);
+        setNotice({ kind: "info", message: "Design preview: no SMS was sent. Enter any 6 digits to open the sample dashboard." });
+        return;
+      }
       const result = await requestLoginCode(phoneNumber);
       if (!result.ok) {
         if (result.retryAfter) setResendAt(Date.now() + result.retryAfter * 1000);
@@ -206,6 +222,13 @@ export function LoginFlow() {
       setCodeError(undefined);
       // Only the `next` value is passed; the server checks it is a path on this site.
       const next = new URLSearchParams(window.location.search).get("next") ?? undefined;
+      if (DASHBOARD_PREVIEW) {
+        // Design preview: no account is signed in. The readable display flag only makes the
+        // site header show "My Dashboard"; it grants nothing.
+        document.cookie = `${SIGNED_IN_COOKIE}=1; path=/; max-age=86400; samesite=lax`;
+        router.push(safeRedirectPath(next));
+        return;
+      }
       // On success the action redirects and this component unmounts.
       const result = await verifyLoginCode(challenge.challengeId, code, next);
       handleVerifyFailure(result.reason, result.message, result.attemptsRemaining);
@@ -243,6 +266,12 @@ export function LoginFlow() {
 
   return (
     <div>
+      {DASHBOARD_PREVIEW && (
+        <p className="mb-6 rounded-md border border-accent-400 bg-accent-100 px-4 py-3 text-[0.9375rem] text-ink">
+          <strong className="font-semibold">Design preview.</strong> No SMS is sent and no real account is signed in. Enter
+          any 10-digit Indian mobile number, then any 6-digit code, to open the sample member dashboard.
+        </p>
+      )}
       {/* Step 1. Kept mounted (just hidden) on step 2 so the number is still there on "Change Mobile Number". */}
       <section aria-labelledby={fieldId("phone-title")} hidden={challenge !== null}>
         <StepHeading id={fieldId("phone-title")} icon={<PhoneIcon className="size-5" />} title="Login with Mobile Number">

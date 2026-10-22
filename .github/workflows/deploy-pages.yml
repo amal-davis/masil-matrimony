@@ -48,16 +48,18 @@ jobs:
       - run: npm install --no-audit --no-fund
 
       # A static export can't include anything that needs a server at request time: /status checks
-      # the API live; /login and /auth/logout use Server Actions and cookies; the dashboard's
-      # upload and shell-data route handlers, the /dashboard/interests redirect and proxy.ts run
-      # per request; robots/sitemap only matter on the real domain. The dashboard pages themselves
-      # stay, in preview mode (see NEXT_PUBLIC_DASHBOARD_PREVIEW below). Server Actions are replaced
-      # by a stub that only answers "not available in the preview".
+      # the API live; /auth/logout is a POST route handler; the dashboard's upload and shell-data
+      # route handlers, the /dashboard/interests redirect and proxy.ts run per request;
+      # robots/sitemap only matter on the real domain. The login and dashboard pages themselves
+      # stay, in preview mode (see NEXT_PUBLIC_DASHBOARD_PREVIEW below): login sends no SMS and
+      # opens the sample dashboard. Server Actions are replaced by stubs, since a static site
+      # can't contain them; preview builds never call them.
       - name: Remove server-only routes from the preview
         run: |
-          rm -rf "app/(public)/status" "app/(public)/login" app/auth proxy.ts app/robots.ts app/sitemap.ts
+          rm -rf "app/(public)/status" app/auth proxy.ts app/robots.ts app/sitemap.ts
           rm -rf "app/(dashboard)/dashboard/photos/upload" "app/(dashboard)/dashboard/shell-data" "app/(dashboard)/dashboard/interests/page.tsx"
           cp features/dashboard/actions.preview.ts features/dashboard/actions.ts
+          cp features/auth/actions.preview.ts features/auth/actions.ts
 
       - name: Build static site
         run: npx next build
