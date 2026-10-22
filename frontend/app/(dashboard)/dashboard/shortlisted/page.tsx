@@ -7,13 +7,15 @@ import { MemberSummary } from "@/features/dashboard/components/member-summary";
 import { NoProfile } from "@/features/dashboard/components/no-profile";
 import { ShortlistButton } from "@/features/dashboard/components/shortlist-button";
 import { EmptyState, PageHeader, pageParam, Pagination, primaryButton } from "@/features/dashboard/components/ui";
+import { STATIC_EXPORT } from "@/features/dashboard/preview-flag";
 import { getShortlist } from "@/features/dashboard/server-api";
 import type { MemberCard } from "@/features/dashboard/types";
 
 export const metadata: Metadata = { title: "Shortlisted Profiles" };
 
 export default async function ShortlistedPage({ searchParams }: PageProps<"/dashboard/shortlisted">) {
-  const page = pageParam((await searchParams).page);
+  // The static preview (GitHub Pages) has no query string on the server; its sample data fits on one page.
+  const page = STATIC_EXPORT ? 1 : pageParam((await searchParams).page);
   const data = await getShortlist(page);
   const available = data?.results.flatMap((entry) => (entry.profile.available ? [{ ...entry.profile, shortlisted: true }] : [])) ?? [];
   const unavailable = data?.results.filter((entry) => !entry.profile.available) ?? [];

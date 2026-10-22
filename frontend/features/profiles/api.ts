@@ -41,5 +41,7 @@ export async function getProfile(code: string): Promise<ProfileResult | null> {
 
 /** Profile codes to prerender at build time. Real profiles render on first request instead. */
 export async function getPrerenderedProfileCodes(): Promise<string[]> {
-  return DEMO_PROFILES_ALLOWED ? demoProfileDetails.map((profile) => profile.profileCode) : [];
+  const codes = DEMO_PROFILES_ALLOWED ? demoProfileDetails.map((profile) => profile.profileCode) : [];
+  // Dashboard preview builds also need the sample member's own page (e.g. on static hosts).
+  return DASHBOARD_PREVIEW ? [...codes, "MAS100245"] : codes;
 }

@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import monogram from "@/public/images/masil-matrimony-monogram.png";
 
 import { activeHref, bottomNav, breadcrumbsFor, dashboardNavGroups, type BadgeKey, type DashboardNavItem } from "../nav";
+import { previewShellData } from "../preview";
 import { DASHBOARD_PREVIEW } from "../preview-flag";
 import type { ShellData } from "../types";
 import { BellIcon, DotsIcon, GearIcon, LifebuoyIcon, LogoutIcon, SidebarIcon } from "./icons";
@@ -24,8 +25,10 @@ const COLLAPSE_KEY = "mm-dashboard-sidebar-collapsed";
 
 /** Avatar, name and badge counts, re-read after each navigation so badges follow changes. */
 function useShellData(pathname: string): ShellData | null {
-  const [data, setData] = useState<ShellData | null>(null);
+  // Preview builds use the sample data directly (static hosts have no route handlers).
+  const [data, setData] = useState<ShellData | null>(() => (DASHBOARD_PREVIEW ? previewShellData() : null));
   useEffect(() => {
+    if (DASHBOARD_PREVIEW) return;
     const controller = new AbortController();
     fetch("/dashboard/shell-data", { signal: controller.signal, cache: "no-store" })
       .then((response) => (response.ok && response.headers.get("content-type")?.includes("json") ? response.json() : null))
@@ -190,6 +193,15 @@ function Brand({ collapsed, onClick }: { collapsed: boolean; onClick?: () => voi
 }
 
 function LogoutForm({ className, collapsed = false }: { className?: string; collapsed?: boolean }) {
+  // A preview has no session to end: leave it for the website instead.
+  if (DASHBOARD_PREVIEW) {
+    return (
+      <Link href="/" className={cn("group relative", className)} aria-label={collapsed ? "Exit preview" : undefined}>
+        <LogoutIcon className="size-5 shrink-0" />
+        {!collapsed && "Exit preview"}
+      </Link>
+    );
+  }
   return (
     <form method="post" action={headerActions.logout.href}>
       <button type="submit" className={cn("group relative", className)} aria-label={collapsed ? "Log out" : undefined}>
@@ -290,11 +302,17 @@ function AccountMenu({ data }: { data: ShellData | null }) {
             </Link>
           </div>
           <div className="border-t border-line pt-1.5">
-            <form method="post" action={headerActions.logout.href}>
-              <button type="submit" role="menuitem" className={cn(item, "text-danger hover:bg-danger/5")}>
-                <LogoutIcon className="size-5" /> Log out
-              </button>
-            </form>
+            {DASHBOARD_PREVIEW ? (
+              <Link role="menuitem" onClick={choose} href="/" className={item}>
+                <LogoutIcon className="size-5 text-ink-muted" /> Exit preview
+              </Link>
+            ) : (
+              <form method="post" action={headerActions.logout.href}>
+                <button type="submit" role="menuitem" className={cn(item, "text-danger hover:bg-danger/5")}>
+                  <LogoutIcon className="size-5" /> Log out
+                </button>
+              </form>
+            )}
           </div>
         </div>
       )}

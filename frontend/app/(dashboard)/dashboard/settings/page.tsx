@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { maskPhoneNumber } from "@/features/auth/schema";
 import { LogoutIcon } from "@/features/dashboard/components/icons";
 import { PrivacySettings } from "@/features/dashboard/components/photo-privacy";
+import { DASHBOARD_PREVIEW } from "@/features/dashboard/preview-flag";
 import { Badge, PageHeader, secondaryButton } from "@/features/dashboard/components/ui";
 import { formatDate } from "@/features/dashboard/format";
 import { getAccount, getOwnProfile } from "@/features/dashboard/server-api";
@@ -78,12 +79,14 @@ export default async function SettingsPage() {
               <span className="text-ink-muted">shown in your dashboard. Email and SMS alerts aren&apos;t available yet.</span>
             </li>
           </ul>
-          <form method="post" action={headerActions.logout.href} className="mt-5 border-t border-line pt-5">
-            <button type="submit" className={secondaryButton}>
-              <LogoutIcon className="size-4.5" />
-              Log out of this device
-            </button>
-          </form>
+          {!DASHBOARD_PREVIEW && (
+            <form method="post" action={headerActions.logout.href} className="mt-5 border-t border-line pt-5">
+              <button type="submit" className={secondaryButton}>
+                <LogoutIcon className="size-4.5" />
+                Log out of this device
+              </button>
+            </form>
+          )}
         </SettingsGroup>
 
         <SettingsGroup id="close-title" title="Hide or close your account" description="Take a break, or leave Massil Matrimony.">

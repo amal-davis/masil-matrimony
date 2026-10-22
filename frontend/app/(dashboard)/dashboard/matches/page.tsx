@@ -5,13 +5,15 @@ import { SparkIcon } from "@/features/dashboard/components/icons";
 import { MemberGrid } from "@/features/dashboard/components/member-grid";
 import { NoProfile } from "@/features/dashboard/components/no-profile";
 import { EmptyState, PageHeader, pageParam, Pagination, secondaryButton } from "@/features/dashboard/components/ui";
+import { STATIC_EXPORT } from "@/features/dashboard/preview-flag";
 import { getMatches } from "@/features/dashboard/server-api";
 import type { MemberCard } from "@/features/dashboard/types";
 
 export const metadata: Metadata = { title: "Find Matches" };
 
 export default async function MatchesPage({ searchParams }: PageProps<"/dashboard/matches">) {
-  const page = pageParam((await searchParams).page);
+  // The static preview (GitHub Pages) has no query string on the server; its sample data fits on one page.
+  const page = STATIC_EXPORT ? 1 : pageParam((await searchParams).page);
   const data = await getMatches(page);
 
   return (

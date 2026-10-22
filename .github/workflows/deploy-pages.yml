@@ -5,7 +5,9 @@
 #
 # The preview has no backend: registration and search show their "not available yet" states, and
 # the sample profiles and success stories are switched on (labelled as samples) for demonstration.
-# It is marked noindex so search engines don't list the sample content.
+# The member dashboard is included in its UI preview mode: fictional sample data, no login, and
+# nothing is saved (features/dashboard/preview.ts). It is marked noindex so search engines don't
+# list the sample content.
 name: Deploy frontend preview to GitHub Pages
 
 on:
@@ -45,14 +47,16 @@ jobs:
       # packages (@emnapi/*), which npm ci on Linux rejects. Versions in the lock file are still used.
       - run: npm install --no-audit --no-fund
 
-      # A static export can't include routes that need a server at request time:
-      # /status checks the API live, /login, /auth/logout and the member dashboard use Server
-      # Actions, cookies, route handlers and proxy.ts, and robots/sitemap only matter on the real
-      # domain. Profile pages import the dashboard's Server Actions for real members, so they get
-      # a stub (sample profiles in the preview never call it).
+      # A static export can't include anything that needs a server at request time: /status checks
+      # the API live; /login and /auth/logout use Server Actions and cookies; the dashboard's
+      # upload and shell-data route handlers, the /dashboard/interests redirect and proxy.ts run
+      # per request; robots/sitemap only matter on the real domain. The dashboard pages themselves
+      # stay, in preview mode (see NEXT_PUBLIC_DASHBOARD_PREVIEW below). Server Actions are replaced
+      # by a stub that only answers "not available in the preview".
       - name: Remove server-only routes from the preview
         run: |
-          rm -rf "app/(public)/status" "app/(public)/login" "app/(dashboard)" app/auth proxy.ts app/robots.ts app/sitemap.ts
+          rm -rf "app/(public)/status" "app/(public)/login" app/auth proxy.ts app/robots.ts app/sitemap.ts
+          rm -rf "app/(dashboard)/dashboard/photos/upload" "app/(dashboard)/dashboard/shell-data" "app/(dashboard)/dashboard/interests/page.tsx"
           cp features/dashboard/actions.preview.ts features/dashboard/actions.ts
 
       - name: Build static site
@@ -65,6 +69,8 @@ jobs:
           NEXT_PUBLIC_API_BASE_URL: ${{ steps.pages.outputs.base_url }}/api/v1
           NEXT_PUBLIC_SITE_NAME: Massil Matrimony
           NEXT_PUBLIC_SHOW_DEMO_PROFILES: "true"
+          # Member dashboard with fictional sample data and no login (nothing is saved).
+          NEXT_PUBLIC_DASHBOARD_PREVIEW: "true"
           NEXT_PUBLIC_SHOW_DEMO_STORIES: "true"
           NEXT_PUBLIC_NOINDEX: "true"
 

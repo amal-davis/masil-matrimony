@@ -1,6 +1,7 @@
 import { demoProfileDetails } from "@/features/profiles/demo-profiles";
 import type { ProfileDetail } from "@/features/profiles/types";
 
+import { BASE_PATH } from "./preview-flag";
 import {
   communitiesFor,
   familyTypeOptions,
@@ -21,6 +22,7 @@ import type {
   OwnPhoto,
   OwnProfile,
   Paginated,
+  ShellData,
   ShortlistItem,
 } from "./types";
 
@@ -98,9 +100,9 @@ export const previewProfile: OwnProfile = {
 
 /** Illustrated placeholders (public/images/preview), not photographs of anyone. */
 export const previewPhotos: OwnPhoto[] = [
-  { id: "00000000-0000-4000-8000-000000000001", url: "/images/preview/sample-photo-1.svg", width: 800, height: 1000, is_primary: true, status: "approved", review_note: "", created_at: at("2026-08-02") },
-  { id: "00000000-0000-4000-8000-000000000002", url: "/images/preview/sample-photo-2.svg", width: 800, height: 1000, is_primary: false, status: "approved", review_note: "", created_at: at("2026-08-05") },
-  { id: "00000000-0000-4000-8000-000000000003", url: "/images/preview/sample-photo-3.svg", width: 800, height: 1000, is_primary: false, status: "pending", review_note: "", created_at: at("2026-10-20") },
+  { id: "00000000-0000-4000-8000-000000000001", url: `${BASE_PATH}/images/preview/sample-photo-1.svg`, width: 800, height: 1000, is_primary: true, status: "approved", review_note: "", created_at: at("2026-08-02") },
+  { id: "00000000-0000-4000-8000-000000000002", url: `${BASE_PATH}/images/preview/sample-photo-2.svg`, width: 800, height: 1000, is_primary: false, status: "approved", review_note: "", created_at: at("2026-08-05") },
+  { id: "00000000-0000-4000-8000-000000000003", url: `${BASE_PATH}/images/preview/sample-photo-3.svg`, width: 800, height: 1000, is_primary: false, status: "pending", review_note: "", created_at: at("2026-10-20") },
 ];
 
 // --- Other (fictional) members: the site's demo profiles ------------------
@@ -281,6 +283,19 @@ export function previewSummary(): DashboardSummary {
     ]
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
       .slice(0, 5),
+  };
+}
+
+/** The frame's live values (avatar, name, badges) for preview builds, from the same sample data. */
+export function previewShellData(): ShellData {
+  const summary = previewSummary();
+  return {
+    name: summary.profile!.display_name,
+    profileCode: summary.profile!.profile_code,
+    photoUrl: summary.profile!.photo?.url ?? null,
+    membership: summary.membership?.plan_name ?? null,
+    unreadNotifications: summary.notifications.unread,
+    awaitingReply: summary.interests!.awaiting_your_response,
   };
 }
 

@@ -6,6 +6,7 @@ import { BellIcon, CameraIcon, CrownIcon, InboxIcon, SendIcon, UserCheckIcon } f
 import { MarkAllRead, NotificationLink } from "@/features/dashboard/components/notification-actions";
 import { Badge, EmptyState, PageHeader, pageParam, Pagination } from "@/features/dashboard/components/ui";
 import { formatDate } from "@/features/dashboard/format";
+import { STATIC_EXPORT } from "@/features/dashboard/preview-flag";
 import { getNotifications } from "@/features/dashboard/server-api";
 import { cn } from "@/lib/utils";
 
@@ -26,7 +27,8 @@ const kindIcon: Record<string, ReactNode> = {
 };
 
 export default async function NotificationsPage({ searchParams }: PageProps<"/dashboard/notifications">) {
-  const page = pageParam((await searchParams).page);
+  // The static preview (GitHub Pages) has no query string on the server; its sample data fits on one page.
+  const page = STATIC_EXPORT ? 1 : pageParam((await searchParams).page);
   const data = await getNotifications(page);
 
   return (

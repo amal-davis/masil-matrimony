@@ -9,7 +9,7 @@ import type { MutationResult } from "./server-api";
 
 const unavailable = async (...args: unknown[]): Promise<MutationResult<never>> => {
   void args;
-  return { ok: false, status: 503, message: "This isn't available in the website preview.", fieldErrors: {} };
+  return { ok: false, status: 503, message: "Preview only: this is sample data, so nothing was saved.", fieldErrors: {} };
 };
 
 export const createProfile = unavailable;

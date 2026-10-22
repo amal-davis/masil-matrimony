@@ -6,6 +6,7 @@ import { CheckIcon } from "@/components/ui/icons";
 import { CalendarIcon, CrownIcon, LifebuoyIcon } from "@/features/dashboard/components/icons";
 import { Badge, Card, Notice, PageHeader, primaryButton, secondaryButton } from "@/features/dashboard/components/ui";
 import { formatDate, subscriptionStatus } from "@/features/dashboard/format";
+import { STATIC_EXPORT } from "@/features/dashboard/preview-flag";
 import { getMembership } from "@/features/dashboard/server-api";
 import type { Subscription } from "@/features/dashboard/types";
 import { formatInr, membershipPackages } from "@/features/packages/packages";
@@ -37,7 +38,8 @@ export default async function MembershipPage() {
   const { current } = membership;
   const currentPackage = current ? membershipPackages.find((item) => item.id === current.plan_code) : undefined;
   // "Days left" depends on today, so this page must render per request, never at build time.
-  await connection();
+  // (The static GitHub Pages preview can only use its build date.)
+  if (!STATIC_EXPORT) await connection();
   const period = current ? validity(current) : null;
 
   return (

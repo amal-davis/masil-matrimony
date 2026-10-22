@@ -6,6 +6,7 @@ import { useEffect, useRef, type RefObject } from "react";
 import { SiteLogo } from "@/components/layout/site-logo";
 import { CloseIcon, SearchIcon } from "@/components/ui/icons";
 import { useSignedIn } from "@/features/auth/use-signed-in";
+import { DASHBOARD_PREVIEW } from "@/features/dashboard/preview-flag";
 import { headerActions, mainNav } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
@@ -25,7 +26,8 @@ type MobileNavDrawerProps = {
 
 /** Left-side navigation drawer for viewports below `lg`. */
 export function MobileNavDrawer({ id, open, onClose, pathname, returnFocusRef }: MobileNavDrawerProps) {
-  const signedIn = useSignedIn();
+  // Dashboard preview builds (e.g. the GitHub Pages preview) link straight to the sample dashboard.
+  const signedIn = useSignedIn() || DASHBOARD_PREVIEW;
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
@@ -159,11 +161,13 @@ export function MobileNavDrawer({ id, open, onClose, pathname, returnFocusRef }:
               >
                 {headerActions.dashboard.label}
               </Link>
-              <form method="post" action={headerActions.logout.href} className="flex flex-col">
-                <button type="submit" className={cn(action, "text-ivory hover:bg-white/10")}>
-                  {headerActions.logout.label}
-                </button>
-              </form>
+              {!DASHBOARD_PREVIEW && (
+                <form method="post" action={headerActions.logout.href} className="flex flex-col">
+                  <button type="submit" className={cn(action, "text-ivory hover:bg-white/10")}>
+                    {headerActions.logout.label}
+                  </button>
+                </form>
+              )}
             </>
           ) : (
             <Link
