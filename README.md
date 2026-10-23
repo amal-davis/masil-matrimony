@@ -102,6 +102,11 @@ pip install -r requirements.txt
 You need a MySQL server and a dedicated database user. Choose **one** option.
 Pick your own strong password; it goes only into `backend/.env`.
 
+> **Version requirement:** Django 5.2 needs **MySQL 8.0.11+ or MariaDB 10.5+**. XAMPP 8.x ships
+> MariaDB **10.4**, which Django refuses to connect to. With XAMPP, run a separate, newer MariaDB
+> (e.g. 10.11 LTS from the official zip) on another port such as `3308`, set `DB_PORT` to match,
+> and add it to phpMyAdmin as an extra server in `xampp/phpMyAdmin/config.inc.php`.
+
 ### Option A — Docker (recommended if you have Docker Desktop)
 
 1. Create `backend/.env` (step 7) and set `DB_NAME`, `DB_USER`, `DB_PASSWORD` and
@@ -207,7 +212,28 @@ python manage.py createsuperuser
 ```
 
 You will be asked for an email and password. The account gets role `super_admin`. No default or
-hardcoded admin account exists.
+hardcoded admin account exists. Accounts sign in with their **email address**; there are no usernames.
+
+For a local development database only, you can create it non-interactively. The password is read from
+the environment for this one command and is never stored in the project. If the email already exists,
+the command fails instead of changing that account:
+
+```bash
+DJANGO_SUPERUSER_EMAIL=admin@localhost DJANGO_SUPERUSER_PASSWORD='<your-dev-password>' \
+  python manage.py createsuperuser --noinput
+```
+
+`--noinput` skips Django's password-strength checks, so never use it with a weak password on a server.
+On any shared or public environment, create the account interactively with a strong password, set a
+non-default `DJANGO_ADMIN_URL`, and change any development password before deploying.
+
+The admin uses [Django Unfold](https://unfoldadmin.com) (dashboard, sidebar and styling configured in
+`config/settings/base.py` → `UNFOLD` and `apps/core/admin_site.py`). To give other staff limited access,
+create the staff groups, then (as a superuser) tick "Staff status" on their account and add them to a group:
+
+```bash
+python manage.py sync_admin_groups   # Read-only reviewers, Profile moderators, Membership managers, Support staff
+```
 
 ## 10. Start the backend
 

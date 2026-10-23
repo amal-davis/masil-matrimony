@@ -1,0 +1,68 @@
+{% extends "admin/base.html" %}
+{% load i18n unfold %}
+
+{% comment %}
+    Admin dashboard. Figures and lists come from apps.core.admin_site.dashboard_callback
+    (settings.UNFOLD["DASHBOARD_CALLBACK"]) and only cover models the user may view.
+{% endcomment %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+    {% include "unfold/helpers/site_branding.html" %}
+{% endblock %}
+
+{% block content %}
+    <div class="flex flex-col gap-8">
+        {% if dashboard_stats %}
+            <section aria-label="Key figures" class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {% for stat in dashboard_stats %}
+                    {% component "unfold/components/card.html" with href=stat.href %}
+                        <p class="text-sm text-font-subtle-light dark:text-font-subtle-dark">{{ stat.title }}</p>
+                        <p class="mt-1 text-3xl font-semibold text-font-important-light dark:text-font-important-dark">{{ stat.value }}</p>
+                        {% if stat.note %}
+                            <p class="mt-1 text-xs text-font-subtle-light dark:text-font-subtle-dark">{{ stat.note }}</p>
+                        {% endif %}
+                    {% endcomponent %}
+                {% endfor %}
+            </section>
+        {% endif %}
+
+        {% if show_payments_notice %}
+            <div role="note" class="border border-base-200 rounded-default px-4 py-3 text-sm dark:border-base-800">
+                <strong class="font-semibold text-font-important-light dark:text-font-important-dark">Payments:</strong>
+                no payment gateway is connected yet, so there are no payment transactions, failed payments or refunds
+                to show. Record a subscription after confirming an offline payment, then use
+                &ldquo;Activate&rdquo; on the Subscriptions page.
+            </div>
+        {% endif %}
+
+        {% if dashboard_panels %}
+            <div class="grid gap-6 lg:grid-cols-2">
+                {% for panel in dashboard_panels %}
+                    <section aria-label="{{ panel.title }}" class="flex flex-col">
+                        <div class="flex items-center justify-between mb-2">
+                            <h2 class="font-semibold text-sm text-font-important-light dark:text-font-important-dark">{{ panel.title }}</h2>
+                            {% if panel.href %}
+                                <a href="{{ panel.href }}" class="text-sm font-medium text-primary-600 dark:text-primary-500">View all</a>
+                            {% endif %}
+                        </div>
+                        {% if panel.table.rows %}
+                            {% component "unfold/components/table.html" with table=panel.table %}{% endcomponent %}
+                        {% else %}
+                            <p class="border border-base-200 rounded-default px-4 py-6 text-sm text-font-subtle-light dark:border-base-800 dark:text-font-subtle-dark">{{ panel.empty }}</p>
+                        {% endif %}
+                    </section>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        {% if not dashboard_stats and not dashboard_panels %}
+            <p class="text-sm text-font-subtle-light dark:text-font-subtle-dark">
+                Your account doesn't have access to any dashboard figures yet. Ask an administrator to add you to a staff group.
+            </p>
+        {% endif %}
+
+        {% include "unfold/helpers/history.html" %}
+    </div>
+{% endblock %}

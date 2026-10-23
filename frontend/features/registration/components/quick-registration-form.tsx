@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { useId, useState } from "react";
+import { useId, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 
 import {
@@ -15,6 +15,11 @@ import {
 } from "@/components/ui/form-field";
 import { cn } from "@/lib/utils";
 
+import { registerMember, type RegisterField } from "@/features/auth/actions";
+import { NoticeBox, PasswordInput, Spinner, type Notice } from "@/features/auth/components/auth-ui";
+import { EMAIL_MAX, PASSWORD_MAX, PASSWORD_MIN } from "@/features/auth/schema";
+import { DASHBOARD_PREVIEW } from "@/features/dashboard/preview-flag";
+
 import {
   createdForOptions,
   genderOptions,
@@ -23,56 +28,87 @@ import {
   type QuickRegistrationValues,
 } from "../schema";
 
-type Status = "idle" | "unavailable";
-
 /** Preselect gender when the relationship already implies it. */
 const genderFor: Record<string, "male" | "female" | undefined> = { son: "male", daughter: "female" };
 
+/** Form fields in page order, for focusing the first one the server rejected. */
+const FIELD_ORDER: RegisterField[] = [
+  "createdFor",
+  "gender",
+  "fullName",
+  "dateOfBirth",
+  "mobile",
+  "email",
+  "password",
+  "acceptTerms",
+];
+
 /**
- * Compact first step of registration shown in the homepage hero.
- *
- * The registration API (POST /auth/register/ + OTP) is planned but not built,
- * so a valid submission is NOT sent anywhere: the form says so plainly instead
- * of pretending to succeed. Wire `onSubmit` to the API when it exists.
+ * Registration form in the homepage hero. Creates the account (email and one
+ * password, with show/hide instead of a confirmation box) and a draft profile
+ * through a Server Action, signs the new member in and opens their profile to finish.
  */
 export function QuickRegistrationForm({ className }: { className?: string }) {
   const id = useId();
-  const [status, setStatus] = useState<Status>("idle");
+  const [notice, setNotice] = useState<Notice>(null);
+  const [pending, startTransition] = useTransition();
   const {
     register,
     handleSubmit,
     setValue,
-    formState: { errors, isSubmitting, isSubmitted },
+    setError,
+    setFocus,
+    getValues,
+    formState: { errors, isSubmitted },
   } = useForm<QuickRegistrationInput, unknown, QuickRegistrationValues>({
     resolver: zodResolver(quickRegistrationSchema),
     mode: "onTouched",
-    defaultValues: { fullName: "", mobile: "", dateOfBirth: "" },
+    defaultValues: { fullName: "", mobile: "", dateOfBirth: "", email: "", password: "" },
   });
 
-  const onSubmit = async () => {
-    // TODO: POST /auth/register/ (see docs/api-specification.md) and continue to OTP verification.
-    setStatus("unavailable");
+  const onSubmit = () => {
+    if (pending) return;
+    startTransition(async () => {
+      setNotice(null);
+      if (DASHBOARD_PREVIEW) {
+        setNotice({ kind: "error", message: "Design preview: registration isn't available, and nothing was saved." });
+        return;
+      }
+      // The raw input is sent; the Server Action validates it again. On success it redirects.
+      const result = await registerMember(getValues());
+      const fieldErrors = result.fieldErrors ?? {};
+      for (const field of FIELD_ORDER) {
+        const message = fieldErrors[field];
+        if (message) setError(field, { type: "server", message });
+      }
+      const first = FIELD_ORDER.find((field) => fieldErrors[field]);
+      if (first && first !== "gender") setFocus(first);
+      if (result.message) setNotice({ kind: "error", message: result.message });
+    });
   };
 
   const fieldId = (name: string) => `${id}-${name}`;
 
   return (
-    <div className={cn("rounded-xl bg-white p-5 shadow-[0_12px_32px_rgba(31,5,11,0.28)] sm:p-7", className)}>
+    <div className={cn("rounded-xl bg-white p-5 shadow-[0_12px_32px_rgba(31,5,11,0.28)] sm:p-6", className)}>
       <h2 id={fieldId("title")} className="font-display text-2xl font-semibold text-ink sm:text-[1.75rem]">
         Create your free profile
       </h2>
       <p className="mt-1 text-[0.9375rem] text-ink-muted">
-        Takes a minute. Your details stay private until you choose to share them.
+        Free and private. Already a member?{" "}
+        <Link href="/login" className="font-medium text-wine-600 underline underline-offset-2">
+          Sign in
+        </Link>
       </p>
 
       <form
         noValidate
         aria-labelledby={fieldId("title")}
         onSubmit={handleSubmit(onSubmit)}
-        onChange={() => status !== "idle" && setStatus("idle")}
-        className="mt-5 flex flex-col gap-4"
+        aria-busy={pending}
+        className="mt-4 flex flex-col gap-3"
       >
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
           <Field id={fieldId("createdFor")} label="Profile created for" error={errors.createdFor?.message}>
             <Select
               id={fieldId("createdFor")}
@@ -127,7 +163,7 @@ export function QuickRegistrationForm({ className }: { className?: string }) {
           />
         </Field>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
           <Field id={fieldId("dateOfBirth")} label="Date of birth" error={errors.dateOfBirth?.message}>
             <input
               id={fieldId("dateOfBirth")}
@@ -168,6 +204,47 @@ export function QuickRegistrationForm({ className }: { className?: string }) {
           </Field>
         </div>
 
+        <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
+          <Field id={fieldId("email")} label="Email address" error={errors.email?.message}>
+            <input
+              id={fieldId("email")}
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              autoCapitalize="none"
+              spellCheck={false}
+              maxLength={EMAIL_MAX}
+              className={controlClasses}
+              {...errorProps(fieldId("email"), errors.email?.message)}
+              {...register("email")}
+            />
+          </Field>
+
+          <div className="min-w-0">
+            <label htmlFor={fieldId("password")} className="block text-sm font-medium text-ink">
+              Password
+            </label>
+            <div className="mt-1.5">
+              <PasswordInput
+                id={fieldId("password")}
+                autoComplete="new-password"
+                maxLength={PASSWORD_MAX}
+                className="h-12"
+                aria-invalid={errors.password ? true : undefined}
+                aria-describedby={cn(
+                  `${fieldId("password")}-hint`,
+                  errors.password && `${fieldId("password")}-error`,
+                )}
+                {...register("password")}
+              />
+            </div>
+            <ErrorText id={`${fieldId("password")}-error`} message={errors.password?.message} />
+            <p id={`${fieldId("password")}-hint`} className="mt-1.5 text-sm text-ink-muted">
+              At least {PASSWORD_MIN} characters.
+            </p>
+          </div>
+        </div>
+
         <div>
           <label className="flex items-start gap-3 text-sm text-ink-muted">
             <input
@@ -178,11 +255,11 @@ export function QuickRegistrationForm({ className }: { className?: string }) {
             />
             <span>
               I agree to the{" "}
-              <Link href="/terms" className="font-medium text-wine-600 underline underline-offset-2">
+              <Link href="/terms-and-conditions" className="font-medium text-wine-600 underline underline-offset-2">
                 Terms of Use
               </Link>{" "}
               and{" "}
-              <Link href="/privacy" className="font-medium text-wine-600 underline underline-offset-2">
+              <Link href="/privacy-policy" className="font-medium text-wine-600 underline underline-offset-2">
                 Privacy Policy
               </Link>
               .
@@ -191,22 +268,17 @@ export function QuickRegistrationForm({ className }: { className?: string }) {
           <ErrorText id={`${fieldId("acceptTerms")}-error`} message={errors.acceptTerms?.message} />
         </div>
 
+        <NoticeBox notice={notice} emptyOffset="-mt-3" />
+
         <button
           type="submit"
-          disabled={isSubmitting}
-          className="inline-flex h-13 items-center justify-center rounded-md bg-wine-600 px-6 text-base font-medium text-white transition-colors duration-200 hover:bg-wine-800 focus-visible:outline-wine-600 disabled:cursor-wait disabled:opacity-60"
+          disabled={pending}
+          className="inline-flex h-13 items-center justify-center gap-2.5 rounded-md bg-wine-600 px-6 text-base font-medium text-white transition-colors duration-200 hover:bg-wine-800 focus-visible:outline-wine-600 disabled:cursor-wait disabled:opacity-60"
         >
-          {isSubmitting ? "Please wait…" : "Register free"}
+          {pending && <Spinner />}
+          {pending ? "Creating your account…" : "Register free"}
         </button>
 
-        <div role="status" aria-live="polite">
-          {status === "unavailable" && (
-            <p className="rounded-md border border-accent-400 bg-accent-100 px-4 py-3 text-sm text-ink">
-              <strong className="font-semibold">Online registration isn&rsquo;t open yet.</strong> Your
-              details have not been sent or saved. Please check back soon.
-            </p>
-          )}
-        </div>
       </form>
     </div>
   );

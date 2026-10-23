@@ -32,6 +32,36 @@ class OTPVerifySerializer(serializers.Serializer):
         return value
 
 
+# Generous for passphrases, but bounded so a huge body can't make hashing expensive.
+PASSWORD_MAX_LENGTH = 256
+
+
+class PasswordLoginSerializer(serializers.Serializer):
+    email = serializers.EmailField(max_length=254)
+    # Not trimmed: spaces can be part of a password.
+    password = serializers.CharField(max_length=PASSWORD_MAX_LENGTH, trim_whitespace=False)
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField(max_length=254)
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    uid = serializers.UUIDField()
+    token = serializers.RegexField(r"^[0-9A-Za-z]+-[0-9A-Za-z]+$", max_length=64)
+    new_password = serializers.CharField(max_length=PASSWORD_MAX_LENGTH, trim_whitespace=False)
+    new_password_confirm = serializers.CharField(max_length=PASSWORD_MAX_LENGTH, trim_whitespace=False)
+
+    def validate(self, attrs):
+        if attrs["new_password"] != attrs["new_password_confirm"]:
+            raise serializers.ValidationError({"new_password_confirm": "The passwords don't match."})
+        return attrs
+
+
+class DetailSerializer(serializers.Serializer):
+    detail = serializers.CharField()
+
+
 class TokenPairSerializer(serializers.Serializer):
     access = serializers.CharField()
     refresh = serializers.CharField()

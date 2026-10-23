@@ -90,7 +90,90 @@ HTTP/1.1 503 Service Unavailable
 
 Neither endpoint returns configuration, versions of server software, hostnames or error details.
 
+### `POST /auth/register/` — create a member account and draft profile (public, throttled)
+
+```json
+// request
+{"email": "member@example.com", "password": "…", "phone_number": "+919876543210", "accept_terms": true,
+ "created_for": "self", "display_name": "Anjali Menon", "gender": "female", "date_of_birth": "2000-01-01"}
+// 201 — the new member is signed in: same token pair as /auth/login/
+{"access": "<jwt>", "refresh": "<jwt>"}
+// 400 — field errors, e.g. a taken address or number, a weak password, or under the minimum age
+{"email": ["An account already uses this email address. …"], "password": ["This password is too common."]}
+```
+
+One password field (no confirmation; the website offers show/hide). The password goes through
+`AUTH_PASSWORD_VALIDATORS`, including similarity to the email and name. The profile fields use the
+dashboard's `CreateProfileSerializer` rules (name format, minimum age 18 for women / 21 for men), and
+the profile starts as a `draft` for the member to complete and submit for review. Taken emails and
+numbers are reported on the field, which reveals that they are registered; `API_THROTTLE_REGISTER`
+(`10/hour` per IP) limits probing. Mobile numbers are not verified at registration.
+
+### `POST /auth/login/` — website sign-in with email and password (public, throttled)
+
+Members only (`role=member`, active, with a usable password). The website's Server Action calls
+this; mobile apps and staff tools use `/auth/token/` below. The email is trimmed and lower-cased
+the way `accounts.User` stores it, and the password is checked by Django's `ModelBackend`.
+
+```json
+// request
+{"email": "member@example.com", "password": "…"}
+// 200
+{"access": "<jwt>", "refresh": "<jwt>"}
+// 400 — the same for a wrong password, unknown email, staff, inactive or password-less account
+{"detail": "The email address or password is incorrect.", "code": "invalid_credentials"}
+// 429 — too many failures for this address (Retry-After header too)
+{"detail": "Too many unsuccessful sign-in attempts. …", "code": "login_rate_limited", "retry_after": 600}
+```
+
+- Per address: `LOGIN_MAX_FAILURES` (10) failures per `LOGIN_FAILURE_WINDOW_SECONDS` (900) lock it
+  until the oldest failure leaves the window, even for the right password. Counted in MySQL
+  (`accounts_authattempt`, keyed by an HMAC of the address, not the address itself). Unknown
+  addresses lock the same way. A successful sign-in or password reset clears the count.
+- Per IP: `API_THROTTLE_LOGIN` (`20/hour`). Malformed input is a `400` with field errors.
+
+### `POST /auth/password/reset/` — email a password-reset link (public, throttled)
+
+Also how members who joined with SMS login (and have no password) set their first one.
+
+```json
+// request
+{"email": "member@example.com"}
+// 202 — identical whether or not the address belongs to an active member (no email is sent if not)
+{"detail": "If an account uses this email address, we've sent it a link to set a new password."}
+// 429 — PASSWORD_RESET_MAX_PER_HOUR (3) requests for this address, registered or not
+{"detail": "…", "code": "password_reset_rate_limited", "retry_after": 1800}
+// 503 — email isn't configured (EMAIL_PROVIDER, DEFAULT_FROM_EMAIL, FRONTEND_URL)
+{"detail": "…", "code": "password_reset_unavailable"}
+```
+
+The emailed link is `{FRONTEND_URL}/reset-password#uid=<user public_id>&token=<token>`. The token
+comes from Django's `default_token_generator`: it expires after `PASSWORD_RESET_TIMEOUT_SECONDS`
+(3600) and stops working once the password changes (so it is single-use) or the member signs in.
+It is in the URL fragment so it never reaches server logs or `Referer` headers. Per IP:
+`API_THROTTLE_PASSWORD_RESET` (`10/hour`).
+
+### `POST /auth/password/reset/confirm/` — set the new password (public, throttled)
+
+```json
+// request
+{"uid": "<uuid>", "token": "<token>", "new_password": "…", "new_password_confirm": "…"}
+// 200
+{"detail": "Your password has been changed. You can now sign in."}
+// 400 — invalid, expired or used link
+{"detail": "This password reset link is invalid or has expired. …", "code": "reset_link_invalid"}
+// 400 — AUTH_PASSWORD_VALIDATORS failed, or the two passwords differ
+{"new_password": ["This password is too common."]}
+```
+
+On success the password is hashed with Django's hasher, `email_verified_at` is set if empty, every
+refresh token of the member is blacklisted (signed out everywhere; access tokens still expire
+within their lifetime), and a "password changed" email is sent. Per IP:
+`API_THROTTLE_PASSWORD_RESET_CONFIRM` (`20/hour`).
+
 ### `POST /auth/token/` — obtain tokens (public, throttled)
+
+Any role (mobile apps, API clients). The website uses `/auth/login/` instead.
 
 ```json
 // request
@@ -122,7 +205,8 @@ Reusing a refresh token that was already rotated returns `401`.
 
 ### `POST /auth/otp/request/` — send an SMS login code (public, throttled)
 
-Members only (`role=member`, active). Staff sign in with email and password. Indian mobile
+Kept for API clients; the website no longer uses SMS login (members sign in with email and
+password). Members only (`role=member`, active). Staff sign in with email and password. Indian mobile
 numbers only: `+91` followed by 10 digits starting with 6–9.
 
 ```json
@@ -240,7 +324,6 @@ Indicative only; finalised per module.
 
 | Area | Endpoints | Access |
 |------|-----------|--------|
-| Registration | `POST /auth/register/` (with phone OTP), password reset | Public, throttled |
 | Search | `GET /profiles/search/?age_min=&age_max=&religion=&location=…` | Member (limited public preview) |
 | Blocks / reports / profile views | `/blocks/`, `/reports/`, `/profile-views/` | Member |
 | Contact access | `POST /profiles/{code}/contact/` (counts against the membership's contact quota) | Member with a plan |

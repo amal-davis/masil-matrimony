@@ -38,7 +38,11 @@ PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 # Throttling would make repeated test requests flaky.
 REST_FRAMEWORK["DEFAULT_THROTTLE_CLASSES"] = []  # noqa: F405
 
+EMAIL_PROVIDER = "locmem"
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+DEFAULT_FROM_EMAIL = "Massil Matrimony <noreply@example.com>"
+FRONTEND_URL = "https://www.example.com"
+ADMIN_ENVIRONMENT_NAME = "Test"
 
 # Codes are collected in apps.notifications.sms.outbox.
 SMS_PROVIDER = "locmem"

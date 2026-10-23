@@ -130,8 +130,8 @@ optional `API_INTERNAL_BASE_URL` (e.g. a private network address).
 ### Identity
 
 - Custom user model `accounts.User`, created before the first migration.
-- Login identifier: email (unique, stored lower-case). Phone number (E.164, unique, optional) is
-  stored for OTP verification and future phone login.
+- Login identifier: email (unique, stored lower-case) with a password. Phone number (E.164, unique,
+  optional) stays on the account as contact and profile information.
 - `public_id` (UUID) is the identifier exposed to clients and placed in tokens. The sequential
   primary key is never exposed.
 - Passwords are hashed with Django's default PBKDF2 hasher; minimum length 10 plus Django's
@@ -176,7 +176,7 @@ built-in `Group`/`Permission` models, which the custom user model supports via `
 The browser never sees or stores tokens in JavaScript-accessible storage (no `localStorage`).
 
 1. The login form posts to a Next.js server endpoint (Route Handler or Server Action).
-2. That endpoint calls `POST /api/v1/auth/token/` server-to-server.
+2. That endpoint calls `POST /api/v1/auth/login/` server-to-server (email + password, members only).
 3. It stores the access and refresh tokens in **HTTP-only, `Secure`, `SameSite=Lax`** cookies
    scoped to the website domain.
 4. Server Components and Route Handlers read the cookie and call Django with
@@ -186,6 +186,9 @@ The browser never sees or stores tokens in JavaScript-accessible storage (no `lo
 5. Mutations go through Server Actions or Route Handlers, which verify the `Origin` header
    (built into Server Actions); `SameSite=Lax` blocks cross-site cookie sending.
 6. Logout blacklists the refresh token and clears the cookies.
+7. "Keep me signed in" (`mm_remember`, HTTP-only) makes the cookies last until the refresh token
+   expires; without it they are browser-session cookies. `proxy.ts` keeps the choice when it
+   renews tokens. Signing in again blacklists any refresh token the browser still held.
 
 This keeps one token-based auth model for all clients while giving browsers cookie-level
 protection against token theft by XSS. Django `SessionAuthentication` (with CSRF) remains enabled
@@ -197,7 +200,28 @@ Mobile apps call `/api/v1/auth/token/` directly and send `Authorization: Bearer 
 Tokens are stored in the platform secure store (iOS Keychain, Android Keystore/EncryptedSharedPreferences),
 never in plain preferences or files. Refresh rotation and blacklisting apply identically.
 
-### SMS OTP login (implemented for members)
+### Email and password sign-in (implemented for members)
+
+- `apps/accounts/password_auth.py`: `POST /auth/login/`, `/auth/password/reset/` and
+  `/auth/password/reset/confirm/` (docs/api-specification.md). Passwords go through
+  `django.contrib.auth.authenticate` and `set_password` (PBKDF2, `AUTH_PASSWORD_VALIDATORS`); errors
+  are generic, and requests for unknown addresses look the same as real ones.
+- Per-address limits (failed logins, reset emails) are rows in `accounts_authattempt` keyed by an
+  HMAC of the address, so they hold across API processes; per-IP limits are DRF scoped throttles.
+- Members created before passwords existed (SMS login) have no usable password. They set one with
+  "Forgot password?": the emailed link proves they control the account's address and also sets
+  `email_verified_at`. No password is ever generated for them.
+- `apps/notifications/mail.py` sends via `EMAIL_PROVIDER`: `smtp`, or `console` (development: emails,
+  including reset links, are printed by the API server) / `locmem` (tests). Production refuses the
+  last two; unset means password reset answers `503` and the website says so.
+- Website pages: `/login`, `/forgot-password`, `/reset-password` (`features/auth/`). The reset page
+  reads the token from the URL fragment, then removes it from the address bar.
+- Run `python manage.py purge_auth_attempts` daily to delete old attempt records.
+
+### SMS OTP login (API only)
+
+The website no longer offers SMS login; these endpoints remain for API clients and can be turned
+off by leaving `SMS_PROVIDER` empty (they then answer `503`).
 
 - `apps/accounts/otp.py` issues and checks codes; `PhoneOTPChallenge` stores only an HMAC of each
   code (keyed with `SECRET_KEY`, bound to the challenge, purpose and number). Codes come from
@@ -210,10 +234,6 @@ never in plain preferences or files. Refresh rotation and blacklisting apply ide
 - `apps/notifications/sms.py` sends via `SMS_PROVIDER`: `msg91` (DLT template), or `console`
   (development, codes in the server log) / `locmem` (tests). Production refuses the last two;
   unset means SMS login answers `503`.
-- The website follows the browser strategy above: `features/auth/actions.ts` (Server Actions)
-  calls the OTP endpoints server-to-server and stores the token pair in HTTP-only cookies
-  (`mm_access`, `mm_refresh`) plus a readable `mm_signed_in=1` display flag;
-  `POST /auth/logout` (`app/auth/logout/route.ts`) blacklists the refresh token and clears them.
 - Run `python manage.py purge_otp_challenges` daily to delete old challenges.
 
 ### Member dashboard (implemented)

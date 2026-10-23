@@ -26,7 +26,14 @@ REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] = [  # noqa: F405
     "rest_framework.renderers.BrowsableAPIRenderer",
 ]
 
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+# Emails (including password-reset links) are printed to the server console until
+# SMTP is configured. production.py refuses the console provider.
+EMAIL_PROVIDER = env.str("EMAIL_PROVIDER", default="console").strip().lower()
+EMAIL_BACKEND = EMAIL_BACKENDS.get(EMAIL_PROVIDER, EMAIL_BACKEND)  # noqa: F405
+DEFAULT_FROM_EMAIL = env.str("DEFAULT_FROM_EMAIL", default="Massil Matrimony <noreply@localhost>")
+FRONTEND_URL = env.str("FRONTEND_URL", default="http://localhost:3000").rstrip("/")
+
+ADMIN_ENVIRONMENT_NAME = env.str("ADMIN_ENVIRONMENT_NAME", default="Development")
 
 # Login codes are written to the server log until a real SMS provider is configured.
 SMS_PROVIDER = env.str("SMS_PROVIDER", default="console").strip().lower()

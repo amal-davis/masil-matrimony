@@ -190,6 +190,7 @@ export interface AccountInfo {
   phone_number: string | null;
   first_name: string;
   last_name: string;
+  email_verified_at: string | null;
   phone_verified_at: string | null;
   date_joined: string;
 }

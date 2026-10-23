@@ -33,11 +33,13 @@ export const footerLinks = [
   { label: "Contact Us", href: "/contact" },
 ] as const;
 
-/**
- * Legal pages for the footer's bottom bar. Empty until /privacy and /terms are
- * published; add them as { label: "Privacy Policy", href: "/privacy" } etc.
- */
-export const legalLinks: ReadonlyArray<{ label: string; href: string }> = [];
+/** Legal pages for the footer's bottom bar (content in features/legal/). */
+export const legalLinks: ReadonlyArray<{ label: string; href: string }> = [
+  { label: "Privacy Policy", href: "/privacy-policy" },
+  { label: "Terms & Conditions", href: "/terms-and-conditions" },
+  { label: "Refund & Cancellation Policy", href: "/refund-policy" },
+  { label: "Shipping & Delivery Policy", href: "/shipping-policy" },
+];
 
 /**
  * Official office address, one line per entry. NOT CONFIRMED YET: replace

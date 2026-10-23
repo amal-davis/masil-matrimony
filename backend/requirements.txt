@@ -5,6 +5,8 @@ djangorestframework-simplejwt==5.5.1
 django-cors-headers==4.9.0
 django-environ==0.14.0
 drf-spectacular==0.30.0
+# Admin interface theme (requires Django >= 5.1, Python >= 3.11).
+django-unfold==0.91.0
 mysqlclient==2.3.0
 # Image decoding and re-encoding for member photo uploads (apps/profiles/photos.py).
 pillow==11.3.0

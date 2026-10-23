@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { ACCESS_COOKIE, loginUrl, REFRESH_COOKIE, SIGNED_IN_COOKIE } from "@/features/auth/constants";
-import { baseCookie, isExpiring, tokenExpiry, type TokenPair } from "@/features/auth/tokens";
+import { ACCESS_COOKIE, loginUrl, REFRESH_COOKIE, REMEMBER_COOKIE } from "@/features/auth/constants";
+import { isExpiring, sessionCookies, SESSION_COOKIE_NAMES, type TokenPair } from "@/features/auth/tokens";
 import { DASHBOARD_PREVIEW } from "@/features/dashboard/preview-flag";
 import { getApiBaseUrl } from "@/lib/config";
 
@@ -12,7 +12,7 @@ import { getApiBaseUrl } from "@/lib/config";
  * - no session on /dashboard → redirect to /login?next=<this page>
  * - access token expiring    → exchange the refresh token with the API, set the
  *   new cookies on the response and on this request, so the page renders with
- *   the fresh token
+ *   the fresh token (keeping the member's "Keep me signed in" choice)
  *
  * This is the "optimistic" check: the API still authorises every request.
  */
@@ -36,10 +36,8 @@ export async function proxy(request: NextRequest) {
   request.cookies.set(REFRESH_COOKIE, tokens.refresh);
   const response = NextResponse.next({ request: { headers: request.headers } });
   // ...and store them in the browser.
-  const refreshExpires = tokenExpiry(tokens.refresh);
-  response.cookies.set(ACCESS_COOKIE, tokens.access, { ...baseCookie, expires: tokenExpiry(tokens.access) });
-  response.cookies.set(REFRESH_COOKIE, tokens.refresh, { ...baseCookie, expires: refreshExpires });
-  response.cookies.set(SIGNED_IN_COOKIE, "1", { ...baseCookie, httpOnly: false, expires: refreshExpires });
+  const persistent = request.cookies.has(REMEMBER_COOKIE);
+  for (const { name, value, options } of sessionCookies(tokens, persistent)) response.cookies.set(name, value, options);
   return response;
 }
 
@@ -64,7 +62,7 @@ function toLogin(request: NextRequest) {
   // Server Actions and uploads are POSTs: send them back to the page, not to a redirect target they can't follow.
   const target = request.method === "GET" ? `${pathname}${search}` : "/dashboard";
   const response = NextResponse.redirect(new URL(loginUrl(target), request.url));
-  for (const name of [ACCESS_COOKIE, REFRESH_COOKIE, SIGNED_IN_COOKIE]) response.cookies.delete(name);
+  for (const name of SESSION_COOKIE_NAMES) response.cookies.delete(name);
   return response;
 }
 

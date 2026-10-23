@@ -193,10 +193,11 @@ export const previewNotifications: NotificationItem[] = [
 
 export const previewAccount = {
   id: "00000000-0000-4000-c000-000000000001",
-  email: "",
+  email: "arun@example.com",
   phone_number: "+919876543210",
   first_name: "Arun",
   last_name: "",
+  email_verified_at: at("2026-07-15"),
   phone_verified_at: at("2026-07-15"),
   date_joined: at("2026-07-15"),
 };

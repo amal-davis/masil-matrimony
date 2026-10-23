@@ -1,6 +1,9 @@
-import { DEFAULT_AFTER_LOGIN, LOGIN_PATH } from "./constants";
+import { DEFAULT_AFTER_LOGIN, FORGOT_PASSWORD_PATH, LOGIN_PATH, RESET_PASSWORD_PATH } from "./constants";
 
 const ORIGIN = "http://same-origin.invalid";
+
+/** Sign-in pages are never a destination after signing in. */
+const AUTH_PATHS = new Set([LOGIN_PATH, FORGOT_PASSWORD_PATH, RESET_PASSWORD_PATH]);
 
 /**
  * The `next` destination if it is a path on this site, otherwise the default.
@@ -17,6 +20,6 @@ export function safeRedirectPath(next: unknown): string {
   } catch {
     return DEFAULT_AFTER_LOGIN;
   }
-  if (url.origin !== ORIGIN || url.pathname === LOGIN_PATH) return DEFAULT_AFTER_LOGIN;
+  if (url.origin !== ORIGIN || AUTH_PATHS.has(url.pathname.replace(/\/+$/, ""))) return DEFAULT_AFTER_LOGIN;
   return `${url.pathname}${url.search}${url.hash}`;
 }

@@ -112,3 +112,29 @@ class PhoneOTPChallenge(models.Model):
 
     def __str__(self):
         return f"{self.purpose} code for …{self.phone_number[-4:]}"
+
+
+class AuthAttempt(models.Model):
+    """
+    A failed password login, or a password-reset request, for one email address.
+    Counted per address over a time window (see apps.accounts.password_auth) so
+    the limits hold across API processes, like the SMS limits above.
+
+    The address itself is not stored: `key` is an HMAC of the normalised email,
+    so the table holds no personal data even for addresses typed by attackers.
+    """
+
+    class Kind(models.TextChoices):
+        LOGIN_FAILURE = "login_failure", "Failed login"
+        PASSWORD_RESET = "password_reset", "Password reset request"
+
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    key = models.CharField(max_length=64)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        indexes = [models.Index(fields=["key", "kind", "created_at"])]
+        verbose_name = "authentication attempt"
+
+    def __str__(self):
+        return f"{self.kind} at {self.created_at:%Y-%m-%d %H:%M}"

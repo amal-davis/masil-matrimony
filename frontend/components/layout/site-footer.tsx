@@ -129,7 +129,7 @@ export function SiteFooter() {
       </Container>
 
       <div className="border-t border-ivory/10">
-        <Container className="flex flex-col gap-3 py-6 text-sm text-ivory/65 sm:flex-row sm:items-center sm:justify-between">
+        <Container className="flex flex-col gap-3 py-6 text-sm text-ivory/65 xl:flex-row xl:items-center xl:justify-between">
           <p>
             &copy; <CurrentYear /> {BRAND}. All rights reserved.
           </p>

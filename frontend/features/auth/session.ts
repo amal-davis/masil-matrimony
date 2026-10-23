@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 
-import { ACCESS_COOKIE, REFRESH_COOKIE, SIGNED_IN_COOKIE } from "./constants";
-import { baseCookie, tokenExpiry, type TokenPair } from "./tokens";
+import { ACCESS_COOKIE, REFRESH_COOKIE, REMEMBER_COOKIE } from "./constants";
+import { sessionCookies, SESSION_COOKIE_NAMES, type TokenPair } from "./tokens";
 
 /**
  * Server-side session storage (Server Actions and Route Handlers only).
@@ -12,19 +12,18 @@ import { baseCookie, tokenExpiry, type TokenPair } from "./tokens";
 
 export type { TokenPair };
 
-export async function startSession({ access, refresh }: TokenPair) {
+/** Store a new session. `remember` keeps it after the browser closes (see REMEMBER_COOKIE). */
+export async function startSession(tokens: TokenPair, { remember }: { remember: boolean }) {
   const jar = await cookies();
-  const refreshExpires = tokenExpiry(refresh);
-  jar.set(ACCESS_COOKIE, access, { ...baseCookie, expires: tokenExpiry(access) });
-  jar.set(REFRESH_COOKIE, refresh, { ...baseCookie, expires: refreshExpires });
-  jar.set(SIGNED_IN_COOKIE, "1", { ...baseCookie, httpOnly: false, expires: refreshExpires });
+  if (!remember) jar.delete(REMEMBER_COOKIE);
+  for (const { name, value, options } of sessionCookies(tokens, remember)) jar.set(name, value, options);
 }
 
 /** Clear the session cookies and return the refresh token that was stored, if any. */
 export async function endSession(): Promise<string | undefined> {
   const jar = await cookies();
   const refresh = jar.get(REFRESH_COOKIE)?.value;
-  for (const name of [ACCESS_COOKIE, REFRESH_COOKIE, SIGNED_IN_COOKIE]) jar.delete(name);
+  for (const name of SESSION_COOKIE_NAMES) jar.delete(name);
   return refresh;
 }
 

@@ -1,50 +1,57 @@
 import { parsePhoneNumberFromString } from "libphonenumber-js";
 import { z } from "zod";
 
-/**
- * SMS login is for Indian mobile numbers only. Mirrors the API's rule
- * (backend/apps/accounts/serializers.py): +91, then 10 digits starting 6–9.
- */
-export const INDIA_MOBILE_E164 = /^\+91[6-9]\d{9}$/;
-
-/** Room for the number typed with spaces and its own "+91 " prefix. */
-export const PHONE_INPUT_MAX = 16;
+/** Limits shared with the API (backend/apps/accounts/serializers.py). */
+export const EMAIL_MAX = 254;
+export const PASSWORD_MAX = 256;
 
 /**
- * The number in E.164 form (+919876543210), or null if it isn't a valid Indian
- * mobile. Spaces, dashes and brackets are ignored, and a leading +91, 91 or 0
- * that people often type is dropped.
+ * Mirrors the API's MinimumLengthValidator (AUTH_PASSWORD_VALIDATORS in
+ * backend/config/settings/base.py). The API also rejects common passwords and
+ * ones too like the member's details; those errors are shown when it answers.
  */
-export function toIndianMobile(input: string): string | null {
-  let digits = input.replace(/[\s().-]/g, "");
-  if (digits.startsWith("+91")) digits = digits.slice(3);
-  else if (digits.length === 12 && digits.startsWith("91")) digits = digits.slice(2);
-  else if (digits.length === 11 && digits.startsWith("0")) digits = digits.slice(1);
-  return /^[6-9]\d{9}$/.test(digits) ? `+91${digits}` : null;
-}
+export const PASSWORD_MIN = 10;
 
-/** Login step 1: the visitor's Indian mobile number, sent to the API in E.164 form. */
-export const loginPhoneSchema = z
+/** An email address, trimmed. Shared with the registration form. */
+export const emailField = z
+  .string()
+  .trim()
+  .min(1, "Enter your email address.")
+  .max(EMAIL_MAX, "This email address is too long.")
+  .pipe(z.email("Enter a valid email address, e.g. name@example.com."));
+
+/** Sign in. The password is never trimmed: spaces can be part of it. */
+export const loginSchema = z.object({
+  email: emailField,
+  password: z.string().min(1, "Enter your password.").max(PASSWORD_MAX, "This password is too long."),
+  remember: z.boolean(),
+});
+
+export type LoginValues = z.infer<typeof loginSchema>;
+
+export const forgotPasswordSchema = z.object({ email: emailField });
+
+/** A new password: the API's length and all-numeric rules. Shared with the registration form. */
+export const newPasswordField = z
+  .string()
+  .min(PASSWORD_MIN, `Use at least ${PASSWORD_MIN} characters.`)
+  .max(PASSWORD_MAX, "This password is too long.")
+  .refine((value) => !/^\d+$/.test(value), "Use letters or symbols as well as numbers.");
+
+export type ForgotPasswordValues = z.infer<typeof forgotPasswordSchema>;
+
+/** Choosing a new password from an emailed link. */
+export const resetPasswordSchema = z
   .object({
-    phone: z
-      .string()
-      .trim()
-      .min(1, "Enter your mobile number.")
-      .max(PHONE_INPUT_MAX, "This number is too long."),
+    password: newPasswordField,
+    confirm: z.string().min(1, "Enter the password again."),
   })
-  .superRefine(({ phone }, ctx) => {
-    if (!toIndianMobile(phone)) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["phone"],
-        message: "Enter a valid 10-digit Indian mobile number, e.g. 98765 43210.",
-      });
-    }
-  })
-  .transform(({ phone }) => ({ phoneNumber: toIndianMobile(phone)! }));
+  .refine((values) => values.password === values.confirm, {
+    path: ["confirm"],
+    message: "The passwords don't match.",
+  });
 
-export type LoginPhoneInput = z.input<typeof loginPhoneSchema>;
-export type LoginPhoneValues = z.output<typeof loginPhoneSchema>;
+export type ResetPasswordValues = z.infer<typeof resetPasswordSchema>;
 
 /** "+91 ••••• •3210": the country code and the last four digits only. */
 export function maskPhoneNumber(e164: string): string {

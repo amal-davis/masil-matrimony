@@ -18,6 +18,8 @@ DEBUG = False
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=[])
 
 DJANGO_APPS = [
+    # Django Unfold styles the admin; it must come before django.contrib.admin.
+    "unfold",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -67,7 +69,8 @@ ASGI_APPLICATION = "config.asgi.application"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        # Project-level overrides, e.g. the admin dashboard (templates/admin/index.html).
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -112,6 +115,8 @@ USE_TZ = True
 # --------------------------------------------------------------------------
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# Brand assets used by the admin (static/brand/).
+STATICFILES_DIRS = [BASE_DIR / "static"]
 
 # Uploaded files (profile photos, documents). Never served publicly by
 # default: access will go through permission-checked views.
@@ -150,6 +155,12 @@ REST_FRAMEWORK = {
         # SMS login, per IP address. Per-number limits are enforced separately (OTP_* below).
         "otp_request": env.str("API_THROTTLE_OTP_REQUEST", default="10/hour"),
         "otp_verify": env.str("API_THROTTLE_OTP_VERIFY", default="20/hour"),
+        # Email + password sign-in and password reset, per IP address. Per-email limits
+        # are enforced separately (LOGIN_MAX_FAILURES, PASSWORD_RESET_MAX_PER_HOUR below).
+        "login": env.str("API_THROTTLE_LOGIN", default="20/hour"),
+        "register": env.str("API_THROTTLE_REGISTER", default="10/hour"),
+        "password_reset": env.str("API_THROTTLE_PASSWORD_RESET", default="10/hour"),
+        "password_reset_confirm": env.str("API_THROTTLE_PASSWORD_RESET_CONFIRM", default="20/hour"),
         # Per member.
         "photo_upload": env.str("API_THROTTLE_PHOTO_UPLOAD", default="30/hour"),
         "interest_send": env.str("API_THROTTLE_INTEREST_SEND", default="100/day"),
@@ -196,6 +207,42 @@ MSG91_OTP_TEMPLATE_ID = env.str("MSG91_OTP_TEMPLATE_ID", default="")
 MSG91_OTP_VARIABLE = env.str("MSG91_OTP_VARIABLE", default="otp")
 
 # --------------------------------------------------------------------------
+# Email and password sign-in (apps/accounts/password_auth.py)
+# --------------------------------------------------------------------------
+# Failed logins per email address before it is locked for the rest of the window.
+LOGIN_MAX_FAILURES = env.int("LOGIN_MAX_FAILURES", default=10)
+LOGIN_FAILURE_WINDOW_SECONDS = env.int("LOGIN_FAILURE_WINDOW_SECONDS", default=900)
+# Password-reset emails per address per hour.
+PASSWORD_RESET_MAX_PER_HOUR = env.int("PASSWORD_RESET_MAX_PER_HOUR", default=3)
+# How long a reset link works. Links also stop working once used (the password
+# changes) or after the member signs in.
+PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT_SECONDS", default=3600)
+# Public URL of the website, for links in emails (e.g. https://www.example.com).
+FRONTEND_URL = env.str("FRONTEND_URL", default="").rstrip("/")
+
+# --------------------------------------------------------------------------
+# Outgoing email (apps/notifications/mail.py)
+# --------------------------------------------------------------------------
+# "" (not configured), "smtp", or the local-only "console" / "locmem".
+EMAIL_PROVIDER = env.str("EMAIL_PROVIDER", default="").strip().lower()
+EMAIL_BACKENDS = {
+    "smtp": "django.core.mail.backends.smtp.EmailBackend",
+    "console": "django.core.mail.backends.console.EmailBackend",
+    "locmem": "django.core.mail.backends.locmem.EmailBackend",
+}
+# Unconfigured: a backend that delivers nothing. Password reset answers 503 until one is set.
+EMAIL_BACKEND = EMAIL_BACKENDS.get(EMAIL_PROVIDER, "django.core.mail.backends.dummy.EmailBackend")
+EMAIL_HOST = env.str("EMAIL_HOST", default="")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env.str("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env.str("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=False)
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT_SECONDS", default=10)
+DEFAULT_FROM_EMAIL = env.str("DEFAULT_FROM_EMAIL", default="")
+SERVER_EMAIL = DEFAULT_FROM_EMAIL or "root@localhost"
+
+# --------------------------------------------------------------------------
 # Member photos (apps/profiles/photos.py)
 # --------------------------------------------------------------------------
 # Largest accepted upload and the number of photos (excluding rejected ones) per profile.
@@ -217,6 +264,53 @@ SPECTACULAR_SETTINGS = {
 
 # Interactive API docs (Swagger UI) and the OpenAPI schema endpoint.
 API_DOCS_ENABLED = env.bool("API_DOCS_ENABLED", default=False)
+
+# --------------------------------------------------------------------------
+# Admin site (Django Unfold). Callbacks live in apps/core/admin_site.py.
+# --------------------------------------------------------------------------
+# Shown as a badge in the admin header: "Development", "Staging" or "Production".
+ADMIN_ENVIRONMENT_NAME = env.str("ADMIN_ENVIRONMENT_NAME", default="Production")
+
+
+_SITE = "apps.core.admin_site"
+
+UNFOLD = {
+    "SITE_TITLE": "Massil Matrimony Admin",
+    "SITE_HEADER": "Massil Matrimony",
+    "SITE_SUBHEADER": "Administration",
+    "SITE_URL": f"{_SITE}.site_url",
+    "SITE_ICON": f"{_SITE}.site_icon",
+    "SITE_SYMBOL": "favorite",
+    "SITE_FAVICONS": [
+        {"rel": "icon", "sizes": "any", "type": "image/png", "href": f"{_SITE}.site_icon"},
+    ],
+    "SHOW_HISTORY": True,
+    "SHOW_VIEW_ON_SITE": False,
+    "ENVIRONMENT": f"{_SITE}.environment_callback",
+    "DASHBOARD_CALLBACK": f"{_SITE}.dashboard_callback",
+    # The website's wine palette (frontend/app/globals.css: wine-600 #4b0f1e, wine-800 #2a0810).
+    "COLORS": {
+        "primary": {
+            "50": "#fbf3f5",
+            "100": "#f6e4e8",
+            "200": "#edc8d0",
+            "300": "#dfa0ae",
+            "400": "#c96f84",
+            "500": "#ad4a62",
+            "600": "#8c2c44",
+            "700": "#6e1d32",
+            "800": "#4b0f1e",
+            "900": "#2a0810",
+            "950": "#1f050b",
+        },
+    },
+    "SIDEBAR": {
+        "show_search": True,
+        "show_all_applications": False,
+        # Built per request (badges, permissions): apps/core/admin_site.py.
+        "navigation": f"{_SITE}.sidebar_navigation",
+    },
+}
 
 # --------------------------------------------------------------------------
 # CORS / CSRF

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { FORGOT_PASSWORD_PATH } from "@/features/auth/constants";
 import { maskPhoneNumber } from "@/features/auth/schema";
 import { LogoutIcon } from "@/features/dashboard/components/icons";
 import { PrivacySettings } from "@/features/dashboard/components/photo-privacy";
@@ -39,6 +40,13 @@ export default async function SettingsPage() {
       <div>
         <SettingsGroup id="account-title" title="Account" description="The details we use to recognise you.">
           <dl className="grid gap-5 sm:grid-cols-2">
+            <div className="min-w-0">
+              <dt className="text-sm text-ink-muted">Email address (used to sign in)</dt>
+              <dd className="mt-1 flex flex-wrap items-center gap-2 font-medium break-all">
+                {account.email}
+                {account.email_verified_at && <Badge tone="success">Verified</Badge>}
+              </dd>
+            </div>
             <div>
               <dt className="text-sm text-ink-muted">Registered mobile number</dt>
               <dd className="mt-1 flex flex-wrap items-center gap-2 font-medium">
@@ -52,7 +60,7 @@ export default async function SettingsPage() {
             </div>
           </dl>
           <p className="mt-5 border-t border-line pt-4 text-sm text-ink-muted">
-            To change your registered mobile number, please{" "}
+            To change your email address or registered mobile number, please{" "}
             <Link href="/contact" className={link}>contact us</Link> so we can verify the change.
           </p>
         </SettingsGroup>
@@ -72,7 +80,11 @@ export default async function SettingsPage() {
           <ul className="flex flex-col gap-3 text-[0.9375rem]">
             <li>
               <span className="font-medium">Sign-in:</span>{" "}
-              <span className="text-ink-muted">a one-time code by SMS to your registered number. There&apos;s no password to manage.</span>
+              <span className="text-ink-muted">
+                your email address and password. To change your password,{" "}
+                <Link href={FORGOT_PASSWORD_PATH} className={link}>request a reset link</Link>; we&apos;ll email it to
+                you, and changing it signs you out on every device.
+              </span>
             </li>
             <li>
               <span className="font-medium">Notifications:</span>{" "}

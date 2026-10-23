@@ -24,9 +24,7 @@ export const faqs: Faq[] = [
     id: "register",
     question: "How do I register on Massil Matrimony?",
     answer:
-      "Start with the free form at the top of our homepage: choose who the profile is for, then add a name, date of birth and mobile number. Online registration is opening soon, so for now the form lets you know it isn't live yet instead of creating an account.",
-    reviewNote:
-      "Update when the registration API is live. The planned flow adds mobile number confirmation by one-time code (docs/architecture.md).",
+      "Use the free form at the top of our homepage: choose who the profile is for, then add a name, date of birth, mobile number, email address and a password. Your account is created straight away and you can then complete your profile from your dashboard. Our team reviews every profile before other members can see it.",
   },
   {
     id: "profile-details",
@@ -68,13 +66,13 @@ export const faqs: Faq[] = [
     question: "How is my personal information handled?",
     answer:
       "Our public pages never show contact details, exact dates of birth or private photos. As a member, you will choose who can see your photos and contact details through your privacy settings.",
-    reviewNote: "Link the Privacy Policy here once /privacy is published, and have it reviewed.",
+    reviewNote: "The Privacy Policy is drafted at /privacy-policy; link it here once it is approved (features/legal/config.ts).",
   },
   {
     id: "account-help",
     question: "What should I do if I need help with my account?",
     answer:
-      "Sign-in and password reset will be available on the login page when member accounts open. Never share your password or one-time codes with anyone, including people who claim to be from Massil Matrimony.",
+      "Members sign in on the login page with their email address and password. If you've forgotten your password, or used to sign in with a code sent to your mobile, choose \"Forgot password?\" to get a link by email. Never share your password with anyone, including people who claim to be from Massil Matrimony.",
     reviewNote: "Add the real support channel once it is decided.",
   },
   {

@@ -1,7 +1,9 @@
 from django.contrib import admin, messages
 from django.db import transaction
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html
+from unfold.admin import ModelAdmin, StackedInline, TabularInline
 
 from apps.notifications.models import NotificationKind
 from apps.notifications.services import notify
@@ -11,17 +13,18 @@ from .models import PartnerPreference, Profile, ProfilePhoto
 from .photos import signed_photo_url
 
 
-class PartnerPreferenceInline(admin.StackedInline):
+class PartnerPreferenceInline(StackedInline):
     model = PartnerPreference
     can_delete = False
     extra = 0
 
 
-class ProfilePhotoInline(admin.TabularInline):
+class ProfilePhotoInline(TabularInline):
     model = ProfilePhoto
     extra = 0
     fields = ["preview", "status", "review_note", "is_primary", "created_at"]
-    readonly_fields = ["preview", "is_primary", "created_at"]
+    # Status changes only through the photo actions, which notify the member.
+    readonly_fields = ["preview", "status", "is_primary", "created_at"]
     can_delete = False
 
     @admin.display(description="Photo")
@@ -30,15 +33,29 @@ class ProfilePhotoInline(admin.TabularInline):
 
 
 @admin.register(Profile)
-class ProfileAdmin(admin.ModelAdmin):
-    list_display = ["profile_code", "display_name", "gender", "status", "submitted_at", "reviewed_at"]
-    list_filter = ["status", "gender", "religion", "visibility"]
+class ProfileAdmin(ModelAdmin):
+    list_display = ["profile_code", "display_name", "gender", "status", "account", "submitted_at", "reviewed_at"]
+    list_filter = ["status", "gender", "religion", "visibility", "created_for"]
+    list_select_related = ["user"]
     search_fields = ["profile_code", "display_name", "user__email", "user__phone_number"]
-    readonly_fields = ["public_id", "profile_code", "submitted_at", "reviewed_at", "reviewed_by", "created_at", "updated_at"]
+    search_help_text = "Search by Matrimony ID, name, email or mobile number."
+    ordering = ["-created_at"]
+    list_per_page = 50
+    # Status changes only through "Approve" and "Request changes", which record the
+    # reviewer and notify the member; it can't be edited directly.
+    readonly_fields = [
+        "public_id", "profile_code", "account", "status", "submitted_at", "reviewed_at", "reviewed_by",
+        "created_at", "updated_at",
+    ]
     inlines = [PartnerPreferenceInline, ProfilePhotoInline]
     actions = ["approve", "request_changes"]
 
-    @admin.action(description="Approve selected profiles (make them visible to members)")
+    @admin.display(description="Account", ordering="user__email")
+    def account(self, profile):
+        url = reverse("admin:accounts_user_change", args=[profile.user_id])
+        return format_html('<a href="{}">{}</a>', url, profile.user.email)
+
+    @admin.action(description="Approve selected profiles (make them visible to members)", permissions=["change"])
     def approve(self, request, queryset):
         count = 0
         with transaction.atomic():
@@ -55,10 +72,11 @@ class ProfileAdmin(admin.ModelAdmin):
                     "Your profile is now visible to other members.",
                     "/dashboard",
                 )
+                self.log_change(request, profile, "Approved.")
                 count += 1
         self.message_user(request, f"Approved {count} profile(s). Only profiles pending review are changed.")
 
-    @admin.action(description="Request changes (write the reason in 'Review note' first)")
+    @admin.action(description="Request changes (write the reason in 'Review note' first)", permissions=["change"])
     def request_changes(self, request, queryset):
         count = 0
         with transaction.atomic():
@@ -79,16 +97,24 @@ class ProfileAdmin(admin.ModelAdmin):
                     profile.review_note,
                     "/dashboard/my-profile",
                 )
+                self.log_change(request, profile, "Changes requested.")
                 count += 1
         self.message_user(request, f"Returned {count} profile(s) to their members.")
 
 
 @admin.register(ProfilePhoto)
-class ProfilePhotoAdmin(admin.ModelAdmin):
+class ProfilePhotoAdmin(ModelAdmin):
     list_display = ["preview", "profile", "status", "is_primary", "created_at"]
     list_filter = ["status"]
+    list_select_related = ["profile"]
     search_fields = ["profile__profile_code"]
-    readonly_fields = ["public_id", "profile", "preview", "width", "height", "is_primary", "created_at", "reviewed_at"]
+    search_help_text = "Search by Matrimony ID."
+    ordering = ["-created_at"]
+    list_per_page = 50
+    # Status changes only through "Approve" and "Reject", which notify the member.
+    readonly_fields = [
+        "public_id", "profile", "preview", "status", "width", "height", "is_primary", "created_at", "reviewed_at",
+    ]
     exclude = ["image"]
     actions = ["approve", "reject"]
 
@@ -107,17 +133,18 @@ class ProfilePhotoAdmin(admin.ModelAdmin):
                 photo.reviewed_at = timezone.now()
                 photo.save()
                 notify(photo.profile.user, kind, title, photo.review_note or body, "/dashboard/photos")
+                self.log_change(request, photo, f"Marked {photo.get_status_display().lower()}.")
                 count += 1
         self.message_user(request, f"Updated {count} photo(s).")
 
-    @admin.action(description="Approve selected photos")
+    @admin.action(description="Approve selected photos", permissions=["change"])
     def approve(self, request, queryset):
         self._review(
             request, queryset, PhotoStatus.APPROVED, NotificationKind.PHOTO_APPROVED,
             "Your photo has been approved", "Members can now see this photo, subject to your privacy settings.",
         )
 
-    @admin.action(description="Reject selected photos (add a review note to explain)")
+    @admin.action(description="Reject selected photos (add a review note to explain)", permissions=["change"])
     def reject(self, request, queryset):
         self._review(
             request, queryset, PhotoStatus.REJECTED, NotificationKind.PHOTO_REJECTED,

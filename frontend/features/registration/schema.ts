@@ -1,12 +1,11 @@
 import { z } from "zod";
 
+import { emailField, newPasswordField } from "@/features/auth/schema";
+
 /**
- * Step 1 of member registration (the hero quick-registration form).
- *
- * Values follow the planned Profile model in docs/database-design.md
- * (created_for, gender, date_of_birth) and accounts.User (phone_number).
- * There is no registration API yet, so nothing is submitted; see
- * QuickRegistrationForm.
+ * Member registration (the hero quick-registration form). Creates the account
+ * (email, password, mobile) and a draft profile (created_for, gender, name,
+ * date of birth) through POST /auth/register/. The API checks everything again.
  */
 
 const createdForValues = ["self", "son", "daughter", "sibling", "relative"] as const;
@@ -47,7 +46,7 @@ const fields = z.object({
     .string()
     .trim()
     .min(2, "Enter the full name.")
-    .max(100, "Keep the name under 100 characters.")
+    .max(60, "Keep the name under 60 characters.")
     .regex(/^[\p{L}\p{M}][\p{L}\p{M} .'-]*$/u, "Use letters, spaces, dots or hyphens only."),
   dateOfBirth: z.iso
     .date({ error: "Enter the date of birth." })
@@ -56,6 +55,9 @@ const fields = z.object({
     .string()
     .transform((value) => value.replace(/[\s-]/g, ""))
     .pipe(z.string().regex(/^[6-9]\d{9}$/, "Enter a valid 10-digit Indian mobile number.")),
+  email: emailField,
+  // One password field: the form offers show/hide instead of a confirmation box.
+  password: newPasswordField,
   acceptTerms: z.literal(true, { error: "Please accept the terms and privacy policy." }),
 });
 

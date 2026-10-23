@@ -11,6 +11,10 @@ from .base import (
     ALLOWED_HOSTS,
     CORS_ALLOWED_ORIGINS,
     CSRF_TRUSTED_ORIGINS,
+    DEFAULT_FROM_EMAIL,
+    EMAIL_HOST,
+    EMAIL_PROVIDER,
+    FRONTEND_URL,
     MSG91_AUTH_KEY,
     MSG91_OTP_TEMPLATE_ID,
     SECRET_KEY,
@@ -48,6 +52,16 @@ if SMS_PROVIDER in ("console", "locmem"):
     raise ImproperlyConfigured(f"SMS_PROVIDER={SMS_PROVIDER!r} is for development and tests only.")
 if SMS_PROVIDER == "msg91" and not (MSG91_AUTH_KEY and MSG91_OTP_TEMPLATE_ID):
     raise ImproperlyConfigured("SMS_PROVIDER=msg91 requires MSG91_AUTH_KEY and MSG91_OTP_TEMPLATE_ID.")
+
+# Likewise for email, which carries password-reset links. An empty EMAIL_PROVIDER is
+# allowed: password reset then answers 503 until SMTP is configured.
+if EMAIL_PROVIDER in ("console", "locmem"):
+    raise ImproperlyConfigured(f"EMAIL_PROVIDER={EMAIL_PROVIDER!r} is for development and tests only.")
+if EMAIL_PROVIDER == "smtp":
+    if not (EMAIL_HOST and DEFAULT_FROM_EMAIL):
+        raise ImproperlyConfigured("EMAIL_PROVIDER=smtp requires EMAIL_HOST and DEFAULT_FROM_EMAIL.")
+    if not FRONTEND_URL.startswith("https://"):
+        raise ImproperlyConfigured("FRONTEND_URL must be the site's https:// address for links in emails.")
 
 # --- HTTPS ---------------------------------------------------------------
 SECURE_SSL_REDIRECT = env.bool("DJANGO_SECURE_SSL_REDIRECT", default=True)

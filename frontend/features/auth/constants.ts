@@ -8,10 +8,22 @@ export const REFRESH_COOKIE = "mm_refresh";
  */
 export const SIGNED_IN_COOKIE = "mm_signed_in";
 
+/**
+ * HTTP-only "1" set only when the member ticked "Keep me signed in". Without it
+ * every session cookie is a browser-session cookie, removed when the browser closes;
+ * proxy.ts reads it so renewed tokens keep the member's choice.
+ */
+export const REMEMBER_COOKIE = "mm_remember";
+
 /** Where members land after signing in when no (safe) destination was requested. */
 export const DEFAULT_AFTER_LOGIN = "/dashboard";
 
 export const LOGIN_PATH = "/login";
+
+export const FORGOT_PASSWORD_PATH = "/forgot-password";
+
+/** Emailed reset links point here (backend/apps/accounts/password_auth.py). */
+export const RESET_PASSWORD_PATH = "/reset-password";
 
 export const DASHBOARD_PATH = "/dashboard";
 
