@@ -70,11 +70,17 @@ module is built.
 - **ProfilePhoto**: file reference, is_primary, visibility (`public`, `members`, `on_request`),
   moderation_status.
 - **VerificationDocument**: document type, private file reference, status, reviewed_by, reviewed_at.
-- **PrivacySettings**: who can view photos/contact details, profile visibility.
+- **PrivacySettings**: who can view photos/contact details, profile visibility. Implemented so far as
+  Profile fields: visibility, photo_visibility, contact_sharing (`hidden` by default / `paid_members`).
 
 ### memberships
-- **MembershipPlan**: name, duration_days, price, currency, contact_view_limit, features (JSON), is_active.
-- **Subscription**: user, plan, starts_at, ends_at, status, contact_views_used, payment.
+- **MembershipPackage** (implemented): code (`free`, `silver`, `gold`, `diamond`, `platinum`, `royal`; fixed),
+  category, display_order, is_available, website copy (name, subtitle, tagline, service label, description,
+  benefits JSON, terms, CTA label), fee (decimal, excl. GST), fee_label, tax_treatment, stated_gst_rate,
+  validity_months (null = Free, no expiry), contact_view_limit, outgoing_interest_limit (Free only).
+  Fees, tax, validity and limits need the `change_package_terms` permission.
+- **Subscription** (implemented): user, plan_code, status, starts_at, ends_at, and the terms copied from the
+  package when recorded (package_fee, validity_months, contact_view_limit), contact_views_used. Planned: payment.
 
 ### payments
 - **PaymentOrder**: user, plan, amount, currency, status, gateway, gateway_order_id.
@@ -85,7 +91,9 @@ module is built.
 - **Interest**: sender, receiver, status (`pending`, `accepted`, `declined`, `withdrawn`), message;
   unique per (sender, receiver).
 - **Shortlist**, **ProfileView**, **Block**, **ProfileReport** (with moderation status).
-- **ContactView**: records each paid contact reveal (counts against membership quota).
+- **ContactView** (implemented): subscription, viewer, profile; one per (subscription, profile), so a limit
+  counts different members per subscription. Interest.counts_toward_free_limit marks interests that count
+  toward the Free package's limit.
 
 ### notifications
 - **Notification**: recipient, channel (`in_app`, `email`, `sms`, `push`), template, payload,

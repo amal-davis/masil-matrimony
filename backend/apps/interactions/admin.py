@@ -1,7 +1,7 @@
 from django.contrib import admin
 from unfold.admin import ModelAdmin
 
-from .models import Interest, Shortlist
+from .models import ContactView, Interest, Shortlist
 
 
 @admin.register(Interest)
@@ -37,4 +37,26 @@ class ShortlistAdmin(ModelAdmin):
         return False
 
     def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(ContactView)
+class ContactViewAdmin(ModelAdmin):
+    """Read-only record of paid contact-number views. Lists Matrimony IDs, never the numbers."""
+
+    list_display = ["viewer", "profile", "subscription", "created_at"]
+    list_select_related = ["viewer", "profile", "subscription"]
+    search_fields = ["viewer__profile_code", "profile__profile_code"]
+    search_help_text = "Search by the viewer's or the viewed member's Matrimony ID."
+    ordering = ["-created_at"]
+    date_hierarchy = "created_at"
+    list_per_page = 50
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
         return False

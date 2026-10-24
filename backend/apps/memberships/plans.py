@@ -1,35 +1,32 @@
 """
-Membership plans the backend knows about.
+Package codes the backend knows about.
 
-The ids, names and validity match the packages on the website's /our-packages
-page (frontend/features/packages/packages.ts), which remains the source of the
-package copy and displayed prices. Prices are deliberately not repeated here:
-there is no online payment yet, and when there is, the amount charged must be
-defined and verified on the server (see apps/payments), never taken from the
-browser.
+The package terms themselves (fees, tax treatment, validity, limits, benefit
+copy) are MembershipPackage rows, seeded by migration 0003 and maintained in
+the admin. The website's /our-packages page, the member dashboard and the
+entitlement checks all read those rows; nothing else defines a price.
+
+The codes are fixed because entitlement rules key off them: Free applies to
+every member without a current paid subscription, so it is never a
+Subscription plan.
 """
-from dataclasses import dataclass
-
 from django.db import models
 
 
-class PlanCode(models.TextChoices):
+class PackageCode(models.TextChoices):
+    FREE = "free", "Free Membership"
+    SILVER = "silver", "Silver Membership"
+    GOLD = "gold", "Gold Membership"
     DIAMOND = "diamond", "Diamond Membership"
     PLATINUM = "platinum", "Platinum – Assisted Matchmaking"
     ROYAL = "royal", "Royal – Exclusive At-Home Matchmaking"
 
 
-@dataclass(frozen=True)
-class Plan:
-    code: str
-    name: str
-    validity_months: int
-    # Member contact numbers that may be viewed during the membership; None = not part of the plan.
-    contact_view_limit: int | None
+class PlanCode(models.TextChoices):
+    """Packages a member can subscribe to (everything except Free)."""
 
-
-PLANS = {
-    PlanCode.DIAMOND: Plan(PlanCode.DIAMOND, PlanCode.DIAMOND.label, validity_months=12, contact_view_limit=100),
-    PlanCode.PLATINUM: Plan(PlanCode.PLATINUM, PlanCode.PLATINUM.label, validity_months=3, contact_view_limit=None),
-    PlanCode.ROYAL: Plan(PlanCode.ROYAL, PlanCode.ROYAL.label, validity_months=12, contact_view_limit=None),
-}
+    SILVER = PackageCode.SILVER.value, PackageCode.SILVER.label
+    GOLD = PackageCode.GOLD.value, PackageCode.GOLD.label
+    DIAMOND = PackageCode.DIAMOND.value, PackageCode.DIAMOND.label
+    PLATINUM = PackageCode.PLATINUM.value, PackageCode.PLATINUM.label
+    ROYAL = PackageCode.ROYAL.value, PackageCode.ROYAL.label

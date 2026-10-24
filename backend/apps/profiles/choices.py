@@ -140,6 +140,13 @@ class PhotoVisibility(models.TextChoices):
     ACCEPTED = "accepted", "Only members whose interest I've accepted"
 
 
+class ContactSharing(models.TextChoices):
+    """Whether the member consents to paid members viewing their mobile number. Off until they opt in."""
+
+    HIDDEN = "hidden", "Don't share my mobile number"
+    PAID_MEMBERS = "paid_members", "Members whose package includes contact access"
+
+
 class PhotoStatus(models.TextChoices):
     PENDING = "pending", "Pending review"
     APPROVED = "approved", "Approved"

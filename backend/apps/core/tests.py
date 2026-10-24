@@ -116,7 +116,10 @@ class ProductionSettingsTests(SimpleTestCase):
             key: value
             for key, value in os.environ.items()
             # Isolate from the developer's own configuration.
-            if not key.startswith(("DJANGO_", "DB_", "CORS_", "CSRF_", "API_"))
+            if not key.startswith((
+                "DJANGO_", "DB_", "CORS_", "CSRF_", "API_", "EMAIL_", "DEFAULT_FROM_EMAIL", "FRONTEND_URL",
+                "SUPPORT_EMAIL", "SMS_", "MSG91_",
+            ))
         }
         env.update(self.valid_env)
         env.update(overrides)

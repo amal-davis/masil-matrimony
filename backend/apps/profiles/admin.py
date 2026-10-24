@@ -42,10 +42,11 @@ class ProfileAdmin(ModelAdmin):
     ordering = ["-created_at"]
     list_per_page = 50
     # Status changes only through "Approve" and "Request changes", which record the
-    # reviewer and notify the member; it can't be edited directly.
+    # reviewer and notify the member; it can't be edited directly. Contact sharing is
+    # the member's own consent, so only the member can change it.
     readonly_fields = [
-        "public_id", "profile_code", "account", "status", "submitted_at", "reviewed_at", "reviewed_by",
-        "created_at", "updated_at",
+        "public_id", "profile_code", "account", "status", "contact_sharing", "submitted_at", "reviewed_at",
+        "reviewed_by", "created_at", "updated_at",
     ]
     inlines = [PartnerPreferenceInline, ProfilePhotoInline]
     actions = ["approve", "request_changes"]

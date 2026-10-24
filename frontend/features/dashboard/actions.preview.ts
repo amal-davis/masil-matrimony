@@ -22,6 +22,7 @@ export const respondToInterest = unavailable;
 export const withdrawInterest = unavailable;
 export const sendInterest = unavailable;
 export const addToShortlist = unavailable;
+export const viewContactNumber = unavailable;
 export const removeFromShortlist = unavailable;
 export const markNotificationRead = unavailable;
 export const markAllNotificationsRead = unavailable;

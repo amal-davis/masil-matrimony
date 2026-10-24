@@ -90,24 +90,47 @@ HTTP/1.1 503 Service Unavailable
 
 Neither endpoint returns configuration, versions of server software, hostnames or error details.
 
-### `POST /auth/register/` — create a member account and draft profile (public, throttled)
+### `POST /auth/register/` — create an unverified member account and draft profile (public, throttled)
 
 ```json
 // request
 {"email": "member@example.com", "password": "…", "phone_number": "+919876543210", "accept_terms": true,
  "created_for": "self", "display_name": "Anjali Menon", "gender": "female", "date_of_birth": "2000-01-01"}
-// 201 — the new member is signed in: same token pair as /auth/login/
-{"access": "<jwt>", "refresh": "<jwt>"}
-// 400 — field errors, e.g. a taken address or number, a weak password, or under the minimum age
-{"email": ["An account already uses this email address. …"], "password": ["This password is too common."]}
+// 201 — no tokens: the member verifies their email, then signs in
+{"detail": "Check your email. …", "email": "member@example.com", "email_sent": true}
+// 400 — field errors, e.g. a taken mobile number, a weak password, or under the minimum age
+{"phone_number": ["An account already uses this mobile number. …"], "password": ["This password is too common."]}
+// 503 — email can't be sent at all (EMAIL_PROVIDER unset), so no account is created
+{"detail": "…", "code": "email_unavailable"}
 ```
 
 One password field (no confirmation; the website offers show/hide). The password goes through
 `AUTH_PASSWORD_VALIDATORS`, including similarity to the email and name. The profile fields use the
 dashboard's `CreateProfileSerializer` rules (name format, minimum age 18 for women / 21 for men), and
-the profile starts as a `draft` for the member to complete and submit for review. Taken emails and
-numbers are reported on the field, which reveals that they are registered; `API_THROTTLE_REGISTER`
-(`10/hour` per IP) limits probing. Mobile numbers are not verified at registration.
+the profile starts as a `draft` for the member to complete and submit for review.
+
+The account starts unverified and a verification link is emailed
+(apps/accounts/email_verification.py). `email_sent: false` means the account exists but the email
+couldn't be handed to the mail server; the member can resend. **A registered email gets the same 201
+answer**: the details typed are discarded, and only the address's owner is emailed (a new link if
+unverified, an "already have an account" note if verified), so the form doesn't reveal registered
+addresses. A taken mobile number with a new email is still reported on the field;
+`API_THROTTLE_REGISTER` (`10/hour` per IP) limits probing. Mobile numbers are not verified at registration.
+
+### Email verification (public, throttled)
+
+| Endpoint | Behaviour |
+|----------|-----------|
+| `POST /auth/email/verify/` `{"token"}` | Verifies the account the emailed link belongs to. `200`; `410 verification_link_expired` (after `EMAIL_VERIFICATION_TIMEOUT_SECONDS`, 24 h); `410 email_already_verified` (spent link); `400 verification_link_invalid` (tampered, superseded by a newer link, or the address changed). Signs nobody in. Throttle `API_THROTTLE_EMAIL_VERIFY`. |
+| `POST /auth/email/resend/` `{"email"}` | New link to an unverified member, superseding earlier ones. The same `202` for unknown, verified, staff and suspended addresses (which get nothing). `429 verification_rate_limited` after `EMAIL_VERIFICATION_MAX_PER_HOUR` (3) per address, counted for every address; `503` when the email couldn't be sent. Throttle `API_THROTTLE_EMAIL_RESEND`. |
+| `POST /auth/email/change/` `{"email", "password", "new_email"}` | Corrects the address of an account that isn't verified yet, proven by its password (failures count toward the sign-in lock), and sends a link to the new address. `400 invalid_credentials`, `403 email_change_not_allowed` (already verified), `409 email_taken`. Throttle `API_THROTTLE_EMAIL_CHANGE`. |
+
+Links look like `{FRONTEND_URL}/verify-email#token=…`: the token is in the fragment, so browsers never
+send it to a server. Unverified members are refused everywhere else: `/auth/login/` and
+`/auth/otp/verify/` answer `403 email_not_verified` (only after the right password or code),
+`/auth/token/` and `/auth/token/refresh/` refuse them (`SIMPLE_JWT["USER_AUTHENTICATION_RULE"]`), and
+every member API answers `403 {"code": "email_not_verified"}`. `is_active` remains the separate
+suspension switch.
 
 ### `POST /auth/login/` — website sign-in with email and password (public, throttled)
 
@@ -122,6 +145,8 @@ the way `accounts.User` stores it, and the password is checked by Django's `Mode
 {"access": "<jwt>", "refresh": "<jwt>"}
 // 400 — the same for a wrong password, unknown email, staff, inactive or password-less account
 {"detail": "The email address or password is incorrect.", "code": "invalid_credentials"}
+// 403 — right password, but the email address isn't verified yet
+{"detail": "Please verify your email address before signing in. …", "code": "email_not_verified"}
 // 429 — too many failures for this address (Retry-After header too)
 {"detail": "Too many unsuccessful sign-in attempts. …", "code": "login_rate_limited", "retry_after": 600}
 ```
@@ -307,12 +332,14 @@ taken from the token, never from the request body. Lists are paginated (`?page=`
 | `GET /profiles/photo-files/{token}/` | The image file for a signed URL that expires after `PHOTO_URL_TTL_SECONDS`. Photo URLs in every response are of this form; files are never publicly listed. |
 | `GET /profiles/matches/` | Approved, visible profiles of the opposite gender matching the member's partner preferences, newest first. No compatibility scoring. |
 | `GET /profiles/{code}/` | Another member's profile, privacy-filtered (age, never date of birth; no contact details; income only if the member chose to show it; photos per their photo privacy), plus the viewer's interest and shortlist state. Hidden/unapproved profiles are `404`. |
-| `POST /interests/` `{"profile_code"}` | Send an interest. Needs an approved own profile (`403 profile_not_active`); one per pair (`409 duplicate`); `409 reverse_exists` if they already sent you one. Throttle `API_THROTTLE_INTEREST_SEND`. |
+| `POST /interests/` `{"profile_code"}` | Send an interest. Needs an approved own profile (`403 profile_not_active`); one per pair (`409 duplicate`); `409 reverse_exists` if they already sent you one. Members without a current paid subscription are on the Free package: `403 interest_limit_reached` once they have sent its `outgoing_interest_limit` (15) interests in total, one per member, no reset; re-sending a withdrawn interest doesn't count again. Throttle `API_THROTTLE_INTEREST_SEND`. |
 | `GET /interests/received/` · `GET /interests/sent/` (`?status=pending\|accepted\|declined\|withdrawn`) | Interests by direction. |
 | `POST /interests/{id}/accept/` · `…/decline/` | Receiver only, pending only (`409 not_pending` otherwise). Notifies the sender. |
 | `POST /interests/{id}/withdraw/` | Sender only, pending only. A withdrawn interest can be sent again. |
 | `GET /shortlist/` · `POST /shortlist/` `{"profile_code"}` · `DELETE /shortlist/{code}/` | Shortlist; adding twice is harmless. |
-| `GET /memberships/me/` | Current subscription (or `null`), history, and `online_payment_available` (always `false` until a payment gateway is integrated). |
+| `GET /profiles/{code}/contact/` · `POST` | GET: whether the viewer may see the member's mobile number (`access`: `available`, `viewed`, `not_included`, `not_shared`, `limit_reached`, `profile_not_active`, `no_number`, with `limit`/`used`); never the number. POST: returns `phone_number`, using one of the current subscription's contact views unless this member was already viewed during it (limits count different members per subscription). Needs a current Silver/Gold/Diamond subscription and the member's consent (`contact_sharing = paid_members`); otherwise `403` with the access code. Throttle `API_THROTTLE_CONTACT_VIEW` (POST). |
+| `GET /memberships/packages/` | Public. The available packages in display order: fee and `fee_label`, `tax_treatment` (`no_fee`, `gst_extra`, `gst_stated`), `stated_gst_rate`, `gst_amount` and `total_payable` (both `null` when GST is extra at the applicable rate), `validity_months`, `contact_view_limit`, `outgoing_interest_limit`, benefits and terms copy. Money is a decimal string. |
+| `GET /memberships/me/` | Current subscription (or `null`) with the fee, validity and contact limit stored when it was recorded, history, `entitlements` (the package in force and its interest/contact limits; Free when there is no current subscription), and `online_payment_available` (always `false` until a payment gateway is integrated). |
 | `GET /notifications/` (`?unread=1`) · `POST /notifications/{id}/read/` · `POST /notifications/read-all/` | In-app notifications, with `unread_count`. |
 
 ### Development-only: `GET /schema/`, `GET /docs/`
@@ -326,8 +353,6 @@ Indicative only; finalised per module.
 |------|-----------|--------|
 | Search | `GET /profiles/search/?age_min=&age_max=&religion=&location=…` | Member (limited public preview) |
 | Blocks / reports / profile views | `/blocks/`, `/reports/`, `/profile-views/` | Member |
-| Contact access | `POST /profiles/{code}/contact/` (counts against the membership's contact quota) | Member with a plan |
-| Memberships | `GET /memberships/plans/` | Public |
 | Payments | `POST /payments/orders/`, `POST /payments/webhooks/{gateway}/` | Member / gateway (signature-verified) |
 | Verification queue | `/staff/verification/profiles/`, `…/{id}/approve/` | Verification staff |
 | CRM | `/crm/leads/`, `/crm/leads/{id}/calls/`, `/crm/follow-ups/` | Telecaller (own leads), manager (team) |

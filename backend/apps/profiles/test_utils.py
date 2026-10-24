@@ -8,6 +8,7 @@ from datetime import date
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
+from django.utils import timezone
 from PIL import Image
 from rest_framework.test import APIClient
 
@@ -22,7 +23,9 @@ _counter = itertools.count(1)
 
 
 def make_user(role=Role.MEMBER, **fields):
+    """A member with a verified email unless `email_verified_at=None` is given (see email_verification)."""
     n = next(_counter)
+    fields.setdefault("email_verified_at", timezone.now())
     return User.objects.create_user(
         email=f"user{n}@example.com",
         password=PASSWORD,

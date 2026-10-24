@@ -63,6 +63,11 @@ export const photoVisibilityOptions: Option[] = [
   { value: "accepted", label: "Only members whose interest I've accepted" },
 ];
 
+export const contactSharingOptions: Option[] = [
+  { value: "hidden", label: "Don't share my mobile number" },
+  { value: "paid_members", label: "Members whose package includes contact access" },
+];
+
 /** Minimum legal age of marriage in India, as enforced by the API. */
 export const MIN_AGE = { female: 18, male: 21 } as const;
 

@@ -1,8 +1,6 @@
-import { membershipPackages } from "@/features/packages/packages";
-
 import { A, List, P, Pending, SupportContacts, type LegalSection } from "./components/legal-document";
+import { PackageFeeList } from "./components/package-fee-list";
 import { SERVICE_NAME } from "./config";
-import { packagePriceSummary, packageTitle } from "./package-summary";
 
 /**
  * The Refund & Cancellation Policy, from the owner's initial draft. It sets no
@@ -49,13 +47,7 @@ export const refundSections: LegalSection[] = [
         />
         <P>Every request is assessed fairly under the published terms.</P>
         <P>This policy covers our current packages:</P>
-        <List
-          items={membershipPackages.map((pkg) => (
-            <>
-              <strong className="font-semibold">{packageTitle(pkg)}</strong>: {packagePriceSummary(pkg)}
-            </>
-          ))}
-        />
+        <PackageFeeList />
         <P>
           <Pending id="refunds" />
         </P>

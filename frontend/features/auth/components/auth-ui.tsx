@@ -33,7 +33,7 @@ export function Spinner() {
  * The regions stay mounted when empty; `emptyOffset` (minus the parent's gap) cancels that gap so
  * they take no space.
  */
-export function NoticeBox({ notice, emptyOffset = "-mt-5" }: { notice: Notice; emptyOffset?: "-mt-3" | "-mt-5" }) {
+export function NoticeBox({ notice, emptyOffset = "-mt-5" }: { notice: Notice; emptyOffset?: "-mt-3" | "-mt-5" | "-mt-6" }) {
   return (
     <div className={cn(!notice && emptyOffset)}>
       <div role="alert" aria-live="assertive">

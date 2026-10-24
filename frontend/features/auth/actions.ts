@@ -6,10 +6,11 @@ import { redirect } from "next/navigation";
 import { quickRegistrationSchema, type QuickRegistrationInput } from "@/features/registration/schema";
 import { api, ApiError } from "@/lib/api/client";
 
-import { REFRESH_COOKIE } from "./constants";
+import { CHECK_EMAIL_PATH, PENDING_EMAIL_COOKIE, REFRESH_COOKIE } from "./constants";
 import { safeRedirectPath } from "./redirect";
 import { forgotPasswordSchema, loginSchema, resetPasswordSchema, type LoginValues } from "./schema";
-import { endSession, startSession, type TokenPair } from "./session";
+import { endSession, pendingEmail, startSession, type TokenPair } from "./session";
+import { baseCookie } from "./tokens";
 
 /**
  * Email + password sign-in and password reset, run on the Next.js server
@@ -19,7 +20,8 @@ import { endSession, startSession, type TokenPair } from "./session";
  * here and by the API; the form's checks are only for convenience.
  */
 
-export type SignInResult = { ok: false; message: string };
+/** `unverified`: right password, but the email address hasn't been verified yet. */
+export type SignInResult = { ok: false; message: string; unverified?: boolean };
 
 export type RegisterField =
   | "createdFor"
@@ -34,6 +36,19 @@ export type RegisterField =
 export type RegisterResult = { ok: false; message?: string; fieldErrors?: Partial<Record<RegisterField, string>> };
 
 export type ForgotPasswordResult = { ok: true } | { ok: false; message: string };
+
+export type ResendVerificationResult =
+  | { ok: true; message: string; consoleOnly: boolean }
+  | { ok: false; message: string; needsEmail?: boolean };
+
+export type ChangeEmailResult =
+  | { ok: true; email: string; consoleOnly: boolean }
+  | { ok: false; message: string; field?: "password" | "newEmail" };
+
+export type VerifyEmailResult =
+  /** `signedIn`: the session cookies are set, so the member can go straight to the dashboard. */
+  | { ok: true; message: string; signedIn: boolean }
+  | { ok: false; reason: "expired" | "invalid" | "used" | "error"; message: string };
 
 export type ResetPasswordResult =
   | { ok: true }
@@ -92,6 +107,17 @@ export async function signIn(values: LoginValues, next?: string): Promise<SignIn
     switch (error.status) {
       case 400:
         return { ok: false, message: INVALID_CREDENTIALS };
+      case 403:
+        if (errorCode(error) === "email_not_verified") {
+          // The password was right: remember the address so a new link can be sent without retyping it.
+          await rememberPendingEmail(email);
+          return {
+            ok: false,
+            unverified: true,
+            message: "Please verify your email address before signing in. Open the link we emailed you, or send a new one.",
+          };
+        }
+        return { ok: false, message: GENERIC_ERROR };
       case 429:
         return errorCode(error) === "login_rate_limited"
           ? {
@@ -125,12 +151,24 @@ const REGISTER_FIELDS: Record<string, RegisterField> = {
   accept_terms: "acceptTerms",
 };
 
-/** The page new members land on: their profile, to finish it. */
-const AFTER_REGISTER = "/dashboard/my-profile";
+/** What the API answers to a registration (also to an already-registered address). */
+type RegistrationResponse = {
+  detail: string;
+  email: string;
+  email_sent: boolean;
+  /** Why no email went out: "failed" or "rate_limited". */
+  not_sent_reason?: string;
+  delivery?: string;
+};
+
+/** The API's development console backend prints emails instead of sending them. */
+const CONSOLE_NOTE =
+  " (Development: the email was printed in the Django server's terminal, not delivered. Copy the link from there.)";
 
 /**
- * Create the account and draft profile, then sign the new member in and
- * redirect to their profile. Only returns failures.
+ * Create the account and draft profile. The account starts unverified, so no
+ * session is started: this redirects to the "Check your email" page (saying so
+ * honestly if the email couldn't be sent) and only returns failures.
  */
 export async function registerMember(values: QuickRegistrationInput): Promise<RegisterResult> {
   const parsed = quickRegistrationSchema.safeParse(values);
@@ -144,9 +182,9 @@ export async function registerMember(values: QuickRegistrationInput): Promise<Re
   }
   const data = parsed.data;
 
-  let tokens: TokenPair;
+  let result: RegistrationResponse;
   try {
-    tokens = await api.post<TokenPair>(
+    result = await api.post<RegistrationResponse>(
       "/auth/register/",
       {
         email: data.email,
@@ -164,6 +202,13 @@ export async function registerMember(values: QuickRegistrationInput): Promise<Re
     if (!(error instanceof ApiError)) return { ok: false, message: GENERIC_ERROR };
     if (error.isNetworkError) return { ok: false, message: NETWORK_ERROR };
     if (error.status === 429) return { ok: false, message: DEVICE_LIMIT };
+    if (error.status === 503) {
+      return {
+        ok: false,
+        message:
+          "We can't send verification emails right now, so we can't create new accounts. Please try again later, or contact us.",
+      };
+    }
     if (error.status !== 400) return { ok: false, message: GENERIC_ERROR };
 
     const fieldErrors: Partial<Record<RegisterField, string>> = {};
@@ -176,12 +221,17 @@ export async function registerMember(values: QuickRegistrationInput): Promise<Re
       : { ok: false, message: "Please check your details and try again." };
   }
 
-  const previous = (await cookies()).get(REFRESH_COOKIE)?.value;
+  // Whoever was signed in on this browser before is signed out: the new account isn't usable yet.
+  const previous = await endSession();
   if (previous) {
     await api.post("/auth/token/blacklist/", { refresh: previous }, { cache: "no-store" }).catch(() => undefined);
   }
-  await startSession(tokens, { remember: false });
-  redirect(AFTER_REGISTER);
+  await rememberPendingEmail(result.email);
+  const query = new URLSearchParams();
+  // Only the send status and delivery mode go in the URL, never the address.
+  if (!result.email_sent) query.set("status", result.not_sent_reason === "rate_limited" ? "rate-limited" : "not-sent");
+  if (result.delivery === "console") query.set("delivery", "console");
+  redirect(query.size ? `${CHECK_EMAIL_PATH}?${query}` : CHECK_EMAIL_PATH);
 }
 
 /** Ask the API to email a reset link. Succeeds the same way whether or not the address is registered. */
@@ -259,4 +309,157 @@ export async function resetPassword(
 
   await endSession();
   return { ok: true };
+}
+
+// --- Email verification ------------------------------------------------------
+
+const PENDING_EMAIL_MAX_AGE = 60 * 60 * 24; // a day, like the link itself
+
+async function rememberPendingEmail(email: string) {
+  (await cookies()).set(PENDING_EMAIL_COOKIE, email, { ...baseCookie, maxAge: PENDING_EMAIL_MAX_AGE });
+}
+
+/**
+ * Send a new verification link to the address waiting on this browser, or to
+ * `email` when given (e.g. after the cookie expired). The API answers the same
+ * way whether or not the address has an unverified account.
+ */
+export async function resendVerification(email?: string): Promise<ResendVerificationResult> {
+  const address = email ?? (await pendingEmail());
+  if (!address) return { ok: false, needsEmail: true, message: "Enter the email address you registered with." };
+  if (!forgotPasswordSchema.safeParse({ email: address }).success) {
+    return { ok: false, needsEmail: true, message: "Enter a valid email address, e.g. name@example.com." };
+  }
+
+  let delivery: string | undefined;
+  try {
+    ({ delivery } = await api.post<{ delivery?: string }>(
+      "/auth/email/resend/",
+      { email: address },
+      { headers: await forwardingHeaders(), cache: "no-store" },
+    ));
+  } catch (error) {
+    if (!(error instanceof ApiError)) return { ok: false, message: GENERIC_ERROR };
+    if (error.isNetworkError) return { ok: false, message: NETWORK_ERROR };
+    switch (error.status) {
+      case 429:
+        return errorCode(error) === "verification_rate_limited"
+          ? {
+              ok: false,
+              message: `We've sent several verification emails to this address. Please check your inbox and spam folder, or try again ${waitMessage(error)}.`,
+            }
+          : { ok: false, message: DEVICE_LIMIT };
+      case 503:
+        // Say so honestly rather than pretend a link was sent.
+        return { ok: false, message: "We couldn't send the email just now. Please try again in a few minutes." };
+      default:
+        return { ok: false, message: GENERIC_ERROR };
+    }
+  }
+  if (email) await rememberPendingEmail(address);
+  const consoleOnly = delivery === "console";
+  return {
+    ok: true,
+    consoleOnly,
+    message:
+      `If ${address} has an account waiting for verification, we've sent it a new link. Only the newest link works.` +
+      (consoleOnly ? CONSOLE_NOTE : ""),
+  };
+}
+
+/**
+ * Correct a mistyped address before it is verified. Needs the account's
+ * password (checked by the API), so nobody can move an account to their own address.
+ */
+export async function changeUnverifiedEmail(password: string, newEmail: string): Promise<ChangeEmailResult> {
+  const current = await pendingEmail();
+  if (!current) return { ok: false, message: "Your registration details have expired on this device. Please sign in instead." };
+  if (!forgotPasswordSchema.safeParse({ email: newEmail }).success) {
+    return { ok: false, field: "newEmail", message: "Enter a valid email address, e.g. name@example.com." };
+  }
+  if (!password) return { ok: false, field: "password", message: "Enter the password you chose when registering." };
+
+  let result: RegistrationResponse;
+  try {
+    result = await api.post<RegistrationResponse>(
+      "/auth/email/change/",
+      { email: current, password, new_email: newEmail.trim() },
+      { headers: await forwardingHeaders(), cache: "no-store" },
+    );
+  } catch (error) {
+    if (!(error instanceof ApiError)) return { ok: false, message: GENERIC_ERROR };
+    if (error.isNetworkError) return { ok: false, message: NETWORK_ERROR };
+    switch (errorCode(error)) {
+      case "invalid_credentials":
+        return { ok: false, field: "password", message: "That password isn't right for this registration." };
+      case "email_taken":
+        return { ok: false, field: "newEmail", message: "Another account already uses this email address." };
+      case "email_change_not_allowed":
+        return { ok: false, message: "This address is already verified. Please sign in." };
+      case "login_rate_limited":
+        return { ok: false, message: `Too many unsuccessful attempts. Please try again ${waitMessage(error)}.` };
+      case "verification_rate_limited":
+        return { ok: false, message: `We've sent several emails recently. Please try again ${waitMessage(error)}.` };
+      case "verification_email_failed":
+        return { ok: false, message: "We couldn't send the email just now. Please try again in a few minutes." };
+      default:
+        return { ok: false, message: error.status === 429 ? DEVICE_LIMIT : GENERIC_ERROR };
+    }
+  }
+  await rememberPendingEmail(result.email);
+  return { ok: true, email: result.email, consoleOnly: result.delivery === "console" };
+}
+
+/**
+ * Check a verification link's token with the API. When the link verifies the
+ * account, the API also returns a session (only that once), stored here like a
+ * normal sign-in, so the member goes straight to the dashboard. The browser
+ * never sees the tokens; "Keep me signed in" stays off.
+ */
+export async function verifyEmail(token: string): Promise<VerifyEmailResult> {
+  if (typeof token !== "string" || token.length === 0 || token.length > 512) {
+    return { ok: false, reason: "invalid", message: "This verification link is incomplete or invalid." };
+  }
+  try {
+    const result = await api.post<{ detail: string } & Partial<TokenPair>>(
+      "/auth/email/verify/",
+      { token },
+      { headers: await forwardingHeaders(), cache: "no-store" },
+    );
+    (await cookies()).delete(PENDING_EMAIL_COOKIE);
+    if (!result.access || !result.refresh) return { ok: true, message: result.detail, signedIn: false };
+
+    // A new session never reuses an old one: retire whatever this browser was signed in as.
+    const previous = await endSession();
+    if (previous) {
+      await api.post("/auth/token/blacklist/", { refresh: previous }, { cache: "no-store" }).catch(() => undefined);
+    }
+    await startSession({ access: result.access, refresh: result.refresh }, { remember: false });
+    return { ok: true, message: result.detail, signedIn: true };
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.isNetworkError || error.status >= 500 || error.status === 429) {
+      return {
+        ok: false,
+        reason: "error",
+        message:
+          error instanceof ApiError && error.status === 429
+            ? DEVICE_LIMIT
+            : "We couldn't check your link just now. Please check your connection and try again.",
+      };
+    }
+    switch (errorCode(error)) {
+      case "verification_link_expired":
+        return { ok: false, reason: "expired", message: "This verification link has expired. Links work for 24 hours." };
+      case "email_already_verified":
+        (await cookies()).delete(PENDING_EMAIL_COOKIE);
+        return { ok: false, reason: "used", message: "This email address has already been verified. You can sign in." };
+      default:
+        return {
+          ok: false,
+          reason: "invalid",
+          message:
+            "This verification link is invalid, or a newer link has replaced it. Please use the latest email we sent, or request a new link.",
+        };
+    }
+  }
 }

@@ -161,9 +161,13 @@ REST_FRAMEWORK = {
         "register": env.str("API_THROTTLE_REGISTER", default="10/hour"),
         "password_reset": env.str("API_THROTTLE_PASSWORD_RESET", default="10/hour"),
         "password_reset_confirm": env.str("API_THROTTLE_PASSWORD_RESET_CONFIRM", default="20/hour"),
+        "email_verify": env.str("API_THROTTLE_EMAIL_VERIFY", default="30/hour"),
+        "email_resend": env.str("API_THROTTLE_EMAIL_RESEND", default="10/hour"),
+        "email_change": env.str("API_THROTTLE_EMAIL_CHANGE", default="10/hour"),
         # Per member.
         "photo_upload": env.str("API_THROTTLE_PHOTO_UPLOAD", default="30/hour"),
         "interest_send": env.str("API_THROTTLE_INTEREST_SEND", default="100/day"),
+        "contact_view": env.str("API_THROTTLE_CONTACT_VIEW", default="60/hour"),
     },
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
@@ -184,6 +188,9 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
     "USER_ID_FIELD": "public_id",
     "USER_ID_CLAIM": "user_id",
+    # Active, and email-verified if a member: checked at sign-in and on every refresh,
+    # so a session can't outlive a suspension or start before verification.
+    "USER_AUTHENTICATION_RULE": "apps.accounts.email_verification.user_authentication_rule",
 }
 
 # --------------------------------------------------------------------------
@@ -219,6 +226,14 @@ PASSWORD_RESET_MAX_PER_HOUR = env.int("PASSWORD_RESET_MAX_PER_HOUR", default=3)
 PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT_SECONDS", default=3600)
 # Public URL of the website, for links in emails (e.g. https://www.example.com).
 FRONTEND_URL = env.str("FRONTEND_URL", default="").rstrip("/")
+
+# Email verification (apps/accounts/email_verification.py).
+EMAIL_VERIFICATION_TIMEOUT = env.int("EMAIL_VERIFICATION_TIMEOUT_SECONDS", default=86400)
+# Verification emails per address per hour (registration, resends and corrections together).
+EMAIL_VERIFICATION_MAX_PER_HOUR = env.int("EMAIL_VERIFICATION_MAX_PER_HOUR", default=3)
+# The business's confirmed support address, shown in account emails. Empty until confirmed:
+# emails then point to the website's contact page instead. Never invent one.
+SUPPORT_EMAIL = env.str("SUPPORT_EMAIL", default="")
 
 # --------------------------------------------------------------------------
 # Outgoing email (apps/notifications/mail.py)

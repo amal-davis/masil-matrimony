@@ -27,5 +27,18 @@ export const RESET_PASSWORD_PATH = "/reset-password";
 
 export const DASHBOARD_PATH = "/dashboard";
 
+/** Shown after registering, and when an unverified member signs in. */
+export const CHECK_EMAIL_PATH = "/check-email";
+
+/** Emailed verification links point here (backend/apps/accounts/email_verification.py). */
+export const VERIFY_EMAIL_PATH = "/verify-email";
+
+/**
+ * HTTP-only cookie with the address waiting for verification, so the "Check your
+ * email" page can show it and resend without retyping. It grants nothing: every
+ * request it feeds is checked by the API.
+ */
+export const PENDING_EMAIL_COOKIE = "mm_pending_email";
+
 /** The login page, returning to `path` (a path on this site) afterwards. */
 export const loginUrl = (path: string) => `${LOGIN_PATH}?next=${encodeURIComponent(path)}`;

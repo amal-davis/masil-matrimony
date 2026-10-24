@@ -130,3 +130,35 @@ class ShortlistEntryView(MemberAPIView):
     def delete(self, request, profile_code):
         services.remove_from_shortlist(own_profile(request), profile_code)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ContactNumberView(MemberAPIView):
+    """
+    GET: whether the member may view this profile's mobile number (never the number).
+    POST: view it, using one of the subscription's contact views unless it was
+    already viewed during the subscription.
+    """
+
+    throttle_scope = "contact_view"
+
+    def get_throttles(self):
+        # Only viewing is throttled; checking the status is part of loading a profile.
+        return super().get_throttles() if self.request.method == "POST" else []
+
+    @extend_schema(tags=["contact"])
+    def get(self, request, profile_code):
+        viewer = own_profile(request)
+        try:
+            profile = services.discoverable_profile(profile_code)
+        except services.InteractionError as error:
+            return error_response(error)
+        return Response(services.contact_status(viewer, profile))
+
+    @extend_schema(request=None, tags=["contact"])
+    def post(self, request, profile_code):
+        viewer = own_profile(request)
+        try:
+            summary, phone_number = services.view_contact(viewer, profile_code)
+        except services.InteractionError as error:
+            return error_response(error)
+        return Response({**summary, "phone_number": phone_number})

@@ -56,6 +56,8 @@ can_view_photos = _can_view("profiles.view_profilephoto")
 can_view_interests = _can_view("interactions.view_interest")
 can_view_shortlists = _can_view("interactions.view_shortlist")
 can_view_subscriptions = _can_view("memberships.view_subscription")
+can_view_packages = _can_view("memberships.view_membershippackage")
+can_view_contact_views = _can_view("interactions.view_contactview")
 can_view_enquiries = _can_view("enquiries.view_enquiry")
 can_view_notifications = _can_view("notifications.view_notification")
 can_view_groups = _can_view("auth.view_group")
@@ -125,12 +127,15 @@ def sidebar_navigation(request):
             "items": [
                 item("Interests", "favorite", "admin:interactions_interest_changelist", can_view_interests),
                 item("Shortlists", "bookmark", "admin:interactions_shortlist_changelist", can_view_shortlists),
+                item("Contact views", "contact_phone", "admin:interactions_contactview_changelist",
+                     can_view_contact_views),
             ],
         },
         {
             "title": "Memberships",
             "separator": True,
             "items": [
+                item("Packages", "sell", "admin:memberships_membershippackage_changelist", can_view_packages),
                 item("Subscriptions", "workspace_premium", "admin:memberships_subscription_changelist",
                      can_view_subscriptions, "subscriptions"),
             ],
@@ -186,7 +191,7 @@ def dashboard_callback(request, context):
     from apps.enquiries.models import Enquiry
     from apps.interactions.models import Interest, InterestStatus
     from apps.memberships.models import Subscription, SubscriptionStatus
-    from apps.memberships.plans import PLANS
+    from apps.memberships.models import MembershipPackage
     from apps.profiles.choices import PhotoStatus, ProfileStatus
     from apps.profiles.models import Profile, ProfilePhoto
 
@@ -248,8 +253,8 @@ def dashboard_callback(request, context):
         panels.append(_panel(
             "Membership packages",
             ["Package", "Validity", "Active members"],
-            [[_link(f"{subs_url}?plan_code__exact={code}", plan.name), f"{plan.validity_months} months",
-              per_plan.get(code, 0)] for code, plan in PLANS.items()],
+            [[_link(f"{subs_url}?plan_code__exact={plan.code}", plan.name), f"{plan.validity_months} months",
+              per_plan.get(plan.code, 0)] for plan in MembershipPackage.objects.exclude(validity_months=None)],
             href=subs_url,
         ))
         recent = Subscription.objects.select_related("user__profile").order_by("-created_at")[:5]

@@ -13,14 +13,31 @@ from .models import User
 PRIVILEGE_FIELDS = ["is_staff", "is_superuser", "groups", "user_permissions"]
 
 
+class EmailVerifiedFilter(admin.SimpleListFilter):
+    title = "email verified"
+    parameter_name = "email_verified"
+
+    def lookups(self, request, model_admin):
+        return [("yes", "Verified"), ("no", "Not verified")]
+
+    def queryset(self, request, queryset):
+        if self.value() == "yes":
+            return queryset.exclude(email_verified_at=None)
+        if self.value() == "no":
+            return queryset.filter(email_verified_at=None)
+        return queryset
+
+
 @admin.register(User)
 class UserAdmin(BaseUserAdmin, ModelAdmin):
     form = UserChangeForm
     add_form = UserCreationForm
     change_password_form = AdminPasswordChangeForm
     ordering = ["-date_joined"]
-    list_display = ["email", "matrimony_id", "phone_number", "full_name", "role", "is_active", "date_joined"]
-    list_filter = ["role", "is_active", "is_staff"]
+    list_display = [
+        "email", "matrimony_id", "phone_number", "full_name", "role", "email_verified", "is_active", "date_joined",
+    ]
+    list_filter = ["role", EmailVerifiedFilter, "is_active", "is_staff"]
     list_select_related = ["profile"]
     # Members are easiest to find by Matrimony ID, name or email.
     search_fields = ["email", "phone_number", "first_name", "last_name", "profile__profile_code", "profile__display_name"]
@@ -58,8 +75,13 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
     def get_readonly_fields(self, request, obj=None):
         fields = list(super().get_readonly_fields(request, obj))
         if not request.user.is_superuser:
-            fields += PRIVILEGE_FIELDS
+            # Verifying an address is the member's job (the emailed link); only superusers may override it.
+            fields += [*PRIVILEGE_FIELDS, "email_verified_at"]
         return fields
+
+    @admin.display(description="Email verified", boolean=True, ordering="email_verified_at")
+    def email_verified(self, user):
+        return user.email_verified_at is not None
 
     def has_change_permission(self, request, obj=None):
         # Only superusers may edit a superuser's account (password, email, flags).

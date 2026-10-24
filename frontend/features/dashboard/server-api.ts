@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { DASHBOARD_PATH, loginUrl } from "@/features/auth/constants";
+import { CHECK_EMAIL_PATH, DASHBOARD_PATH, loginUrl } from "@/features/auth/constants";
 import { accessToken } from "@/features/auth/session";
 import { api, ApiError } from "@/lib/api/client";
 import type { ApiErrorBody } from "@/types/api";
@@ -52,6 +52,10 @@ export async function memberGet<T>(path: string, returnTo = DASHBOARD_PATH): Pro
     return await api.get<T>(path, { headers, cache: "no-store" });
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) redirect(loginUrl(returnTo));
+    // A session from before the member verified their email: the API refuses it until they do.
+    if (error instanceof ApiError && error.status === 403 && error.body?.code === "email_not_verified") {
+      redirect(CHECK_EMAIL_PATH);
+    }
     throw error;
   }
 }

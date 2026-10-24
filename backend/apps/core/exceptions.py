@@ -1,6 +1,7 @@
 import logging
 
 from django.http import JsonResponse
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.views import exception_handler
 
 logger = logging.getLogger(__name__)
@@ -14,6 +15,11 @@ def api_exception_handler(exc, context):
     """
     response = exception_handler(exc, context)
     if response is not None:
+        # A permission error with its own code (e.g. "email_not_verified") says which, so clients can act on it.
+        if isinstance(exc, PermissionDenied) and isinstance(response.data, dict):
+            code = exc.get_codes()
+            if isinstance(code, str) and code != PermissionDenied.default_code:
+                response.data["code"] = code
         return response
 
     view = context.get("view")

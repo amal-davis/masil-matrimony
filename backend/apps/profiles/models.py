@@ -18,6 +18,7 @@ from apps.core.models import TimeStampedModel
 
 from .choices import (
     AnnualIncome,
+    ContactSharing,
     CreatedFor,
     Diet,
     EmploymentType,
@@ -109,6 +110,10 @@ class Profile(TimeStampedModel):
     visibility = models.CharField(max_length=8, choices=Visibility.choices, default=Visibility.MEMBERS)
     photo_visibility = models.CharField(
         max_length=10, choices=PhotoVisibility.choices, default=PhotoVisibility.MEMBERS
+    )
+    contact_sharing = models.CharField(
+        max_length=12, choices=ContactSharing.choices, default=ContactSharing.HIDDEN,
+        help_text="The member's consent to paid members viewing their mobile number.",
     )
 
     # Review by verification staff.

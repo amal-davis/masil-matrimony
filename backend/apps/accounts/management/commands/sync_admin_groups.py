@@ -15,6 +15,8 @@ VIEW_ALL = [
     "profiles.view_profilephoto",
     "interactions.view_interest",
     "interactions.view_shortlist",
+    "interactions.view_contactview",
+    "memberships.view_membershippackage",
     "memberships.view_subscription",
     "notifications.view_notification",
     "enquiries.view_enquiry",
@@ -33,10 +35,15 @@ GROUPS = {
         "interactions.view_interest",
         "interactions.view_shortlist",
     ],
-    # Record subscriptions after an offline payment and activate or cancel them.
+    # Record subscriptions after an offline payment and activate or cancel them, and edit
+    # package copy. Fees, tax, validity and limits ("memberships.change_package_terms")
+    # are deliberately in no group: only superusers change them.
     "Membership managers": [
         "accounts.view_user",
         "profiles.view_profile",
+        "interactions.view_contactview",
+        "memberships.view_membershippackage",
+        "memberships.change_membershippackage",
         "memberships.view_subscription",
         "memberships.add_subscription",
         "memberships.change_subscription",

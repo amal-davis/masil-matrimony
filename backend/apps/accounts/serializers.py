@@ -62,6 +62,35 @@ class DetailSerializer(serializers.Serializer):
     detail = serializers.CharField()
 
 
+class RegistrationResultSerializer(serializers.Serializer):
+    detail = serializers.CharField()
+    email = serializers.EmailField()
+    email_sent = serializers.BooleanField()
+    not_sent_reason = serializers.ChoiceField(choices=["", "failed", "rate_limited"], required=False)
+    delivery = serializers.ChoiceField(choices=["smtp", "console", "locmem", ""])
+
+
+class VerifyEmailSerializer(serializers.Serializer):
+    # django.core.signing output: URL-safe base64 segments joined by ":".
+    token = serializers.RegexField(r"^[A-Za-z0-9_:-]+$", max_length=512)
+
+
+class VerifiedSerializer(serializers.Serializer):
+    detail = serializers.CharField()
+    access = serializers.CharField(required=False)
+    refresh = serializers.CharField(required=False)
+
+
+class ResendVerificationSerializer(serializers.Serializer):
+    email = serializers.EmailField(max_length=254)
+
+
+class ChangeUnverifiedEmailSerializer(serializers.Serializer):
+    email = serializers.EmailField(max_length=254)
+    password = serializers.CharField(max_length=PASSWORD_MAX_LENGTH, trim_whitespace=False)
+    new_email = serializers.EmailField(max_length=254)
+
+
 class TokenPairSerializer(serializers.Serializer):
     access = serializers.CharField()
     refresh = serializers.CharField()

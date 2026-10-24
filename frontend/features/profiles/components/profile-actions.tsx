@@ -5,7 +5,7 @@ import { useState, useTransition, type ReactNode } from "react";
 
 import { HeartIcon, InfoIcon, PhoneIcon } from "@/components/ui/icons";
 import { loginUrl } from "@/features/auth/constants";
-import { addToShortlist, removeFromShortlist, sendInterest } from "@/features/dashboard/actions";
+import { addToShortlist, removeFromShortlist, sendInterest, viewContactNumber } from "@/features/dashboard/actions";
 import type { MemberProfileDetail } from "@/features/dashboard/types";
 import { cn } from "@/lib/utils";
 
@@ -16,13 +16,8 @@ type Notice = { tone: "info" | "success" | "danger"; message: string; link?: { h
 const MEMBERSHIP_PATH = "/our-packages";
 const membershipLink = { href: MEMBERSHIP_PATH, label: "View membership packages" };
 
-/** Contact details are a membership benefit, but there is no contact-access API yet. */
-const CONTACT_NOTICE: Notice = {
-  tone: "info",
-  message:
-    "Viewing contact details online isn't available yet. Contact details are shared as part of membership packages, subject to this member's privacy settings.",
-  link: membershipLink,
-};
+/** Access codes where a different membership would help, so the notice links to the packages. */
+const UPGRADE_HELPS = new Set(["not_included", "limit_reached"]);
 
 const SAMPLE_NOTICES = {
   interest: { tone: "info", message: "This is a sample profile for preview, so no interest can be sent. Nothing was sent." },
@@ -49,8 +44,10 @@ const INTEREST_LABEL = {
 /**
  * Profile actions.
  * - Sample profiles: every action explains that it's a sample; nothing is sent.
- * - Real profiles: Send Interest and Shortlist call the API and the page
- *   re-renders from the stored result; contact access isn't available online yet.
+ * - Real profiles: Send Interest, Shortlist and View Contact Details call the
+ *   API and the page re-renders from the stored result. The API decides whether
+ *   the number may be shown (membership, the member's consent, package limit);
+ *   a view that uses up one of the package's contact views is confirmed first.
  */
 export function ProfileActions({
   profilePath,
@@ -67,6 +64,8 @@ export function ProfileActions({
   viewer?: MemberProfileDetail["viewer"];
 }) {
   const [notice, setNotice] = useState<Notice>(null);
+  const [confirmingContact, setConfirmingContact] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
   const [shareStatus, setShareStatus] = useState("");
   const [busy, start] = useTransition();
 
@@ -91,6 +90,40 @@ export function ProfileActions({
       const result = await action();
       setNotice(result.ok ? { tone: "success", message: success } : { tone: "danger", message: result.message ?? "Please try again." });
     });
+
+  const contact = viewer?.contact ?? null;
+
+  const revealContact = () =>
+    start(async () => {
+      setConfirmingContact(false);
+      const result = await viewContactNumber(profileCode);
+      if (result.ok && result.data.phone_number) {
+        setPhoneNumber(result.data.phone_number);
+        setNotice(null);
+      } else if (!result.ok) {
+        const code = "code" in result && typeof result.code === "string" ? result.code : undefined;
+        setNotice({
+          tone: "danger",
+          message: result.message,
+          link: code && UPGRADE_HELPS.has(code) ? membershipLink : undefined,
+        });
+      }
+    });
+
+  const onContactClick = () => {
+    if (!contact) return;
+    if (contact.access === "viewed") return revealContact();
+    if (contact.access === "available") {
+      setNotice(null);
+      setConfirmingContact(true);
+      return;
+    }
+    setNotice({
+      tone: "info",
+      message: contact.message,
+      link: UPGRADE_HELPS.has(contact.access) ? membershipLink : undefined,
+    });
+  };
 
   let actions: ReactNode;
   if (isSample) {
@@ -180,7 +213,13 @@ export function ProfileActions({
           <BookmarkIcon className={cn("size-5", viewer.shortlisted && "fill-current")} />
           {viewer.shortlisted ? "Shortlisted" : "Add to Shortlist"}
         </button>
-        <button type="button" onClick={() => setNotice(CONTACT_NOTICE)} className={secondary}>
+        <button
+          type="button"
+          disabled={busy}
+          aria-expanded={contact?.access === "available" ? confirmingContact : undefined}
+          onClick={onContactClick}
+          className={secondary}
+        >
           <PhoneIcon className="size-5" />
           View Contact Details
         </button>
@@ -195,6 +234,35 @@ export function ProfileActions({
 
       {!isSample && !viewer && (
         <p className="mt-3 text-sm text-ink-muted">Sign in to send interest, shortlist or view contact details.</p>
+      )}
+
+      {confirmingContact && contact?.limit != null && contact.used != null && (
+        <div className="mt-4 rounded-md border border-line bg-white px-4 py-3.5">
+          <p className="text-[0.9375rem] text-ink">
+            Viewing {displayName}&apos;s number uses 1 of your{" "}
+            <strong className="font-semibold tabular-nums">{contact.limit - contact.used}</strong> remaining contact
+            views ({contact.used} of {contact.limit} used). Viewing it again during this membership won&apos;t use
+            another.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <button type="button" disabled={busy} onClick={revealContact} className={cn(primary, "h-11")}>
+              {busy ? "Opening…" : "View number"}
+            </button>
+            <button type="button" onClick={() => setConfirmingContact(false)} className={cn(secondary, "h-11")}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phoneNumber && (
+        <p className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-success/40 bg-success/5 px-4 py-3 text-[0.9375rem] text-ink">
+          <PhoneIcon className="size-5 shrink-0 text-success" />
+          <span>{displayName}&apos;s mobile number:</span>
+          <a href={`tel:${phoneNumber}`} className="font-semibold text-wine-600 tabular-nums underline underline-offset-4">
+            {phoneNumber}
+          </a>
+        </p>
       )}
 
       <div role="status" aria-live="polite">

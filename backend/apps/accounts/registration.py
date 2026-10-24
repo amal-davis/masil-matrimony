@@ -1,16 +1,21 @@
 """
 Public member registration: one request creates the account (email + password)
-and the member's draft profile, so the new member can sign in straight away
-and finish the profile in the dashboard.
+and the member's draft profile. The account starts unverified: the member gets
+a verification link by email and can sign in only after opening it
+(apps.accounts.email_verification).
 
 - The password goes through AUTH_PASSWORD_VALIDATORS and Django's hasher; it is
   never stored or logged as entered. There is one password field: the website
   offers show/hide instead of a confirmation box.
 - The profile details are validated by the dashboard's own CreateProfileSerializer
   (name rules, minimum age by gender), so both routes apply the same rules.
-- Taken email addresses and mobile numbers are reported on the field, so people
-  can sign in instead. That does reveal that an address is registered; the
-  per-IP throttle (API_THROTTLE_REGISTER) limits using it to probe addresses.
+- A taken email address gets the same answer as a new registration ("check your
+  email"), so the form doesn't reveal which addresses are registered; the
+  address's owner is emailed instead (see handle_duplicate_registration). The
+  details typed are discarded, never applied to the existing account.
+- A taken mobile number (with a new email address) is still reported on the
+  field, so people can sign in instead; the per-IP throttle
+  (API_THROTTLE_REGISTER) limits using it to probe numbers.
 """
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -27,7 +32,6 @@ from .serializers import PASSWORD_MAX_LENGTH, india_mobile_validator
 
 PROFILE_FIELDS = ("created_for", "display_name", "gender", "date_of_birth")
 
-EMAIL_TAKEN = "An account already uses this email address. Sign in, or reset your password if you've forgotten it."
 PHONE_TAKEN = "An account already uses this mobile number. Sign in, or contact us if you need help."
 
 
@@ -43,15 +47,7 @@ class RegistrationSerializer(serializers.Serializer):
     date_of_birth = serializers.DateField()
 
     def validate_email(self, value):
-        email = normalize_email(value)
-        if User.objects.filter(email=email).exists():
-            raise serializers.ValidationError(EMAIL_TAKEN)
-        return email
-
-    def validate_phone_number(self, value):
-        if User.objects.filter(phone_number=value).exists():
-            raise serializers.ValidationError(PHONE_TAKEN)
-        return value
+        return normalize_email(value)
 
     def validate_accept_terms(self, value):
         if not value:
@@ -65,6 +61,12 @@ class RegistrationSerializer(serializers.Serializer):
             raise serializers.ValidationError(profile.errors)
         attrs.update(profile.validated_data)
 
+        # A registered email is handled as a duplicate by the view; only for new addresses
+        # is a taken mobile number worth reporting.
+        attrs["is_duplicate"] = User.objects.filter(email=attrs["email"]).exists()
+        if not attrs["is_duplicate"] and User.objects.filter(phone_number=attrs["phone_number"]).exists():
+            raise serializers.ValidationError({"phone_number": [PHONE_TAKEN]})
+
         # Checked against the details being registered, e.g. a password too like the email or name.
         candidate = User(email=attrs["email"], first_name=attrs["display_name"])
         try:
@@ -74,8 +76,16 @@ class RegistrationSerializer(serializers.Serializer):
         return attrs
 
 
+class DuplicateEmail(Exception):
+    """The email address was registered by a simultaneous request."""
+
+
 def register_member(data: dict) -> User:
-    """Create the member account and draft profile from RegistrationSerializer.validated_data."""
+    """
+    Create the unverified member account and draft profile from
+    RegistrationSerializer.validated_data. Raises DuplicateEmail if another
+    request took the address meanwhile.
+    """
     names = {}
     if data["created_for"] == "self":
         # Account emails greet the account holder; when a parent or relative registers,
@@ -93,7 +103,7 @@ def register_member(data: dict) -> User:
     except (IntegrityError, DjangoValidationError) as error:
         # Another request registered the same email or number in the meantime.
         if User.objects.filter(email=data["email"]).exists():
-            raise serializers.ValidationError({"email": [EMAIL_TAKEN]}) from error
+            raise DuplicateEmail() from error
         if User.objects.filter(phone_number=data["phone_number"]).exists():
             raise serializers.ValidationError({"phone_number": [PHONE_TAKEN]}) from error
         raise

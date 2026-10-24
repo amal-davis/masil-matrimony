@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useId, useState, useTransition } from "react";
+import { useEffect, useId, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 
 import { ErrorText, errorProps } from "@/components/ui/form-field";
@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 
 import { DASHBOARD_PREVIEW } from "@/features/dashboard/preview-flag";
 
-import { signIn } from "../actions";
+import { resendVerification, signIn } from "../actions";
 import { FORGOT_PASSWORD_PATH, SIGNED_IN_COOKIE } from "../constants";
 import { safeRedirectPath } from "../redirect";
 import { EMAIL_MAX, loginSchema, PASSWORD_MAX, type LoginValues } from "../schema";
@@ -26,7 +26,24 @@ export function LoginForm() {
   const router = useRouter();
   const fieldId = (name: string) => `${id}-${name}`;
   const [notice, setNotice] = useState<Notice>(null);
+  // Right password, but the email isn't verified yet: offer a new link instead of the dashboard.
+  const [unverified, setUnverified] = useState(false);
   const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    // Arriving from a successful verification link.
+    if (new URLSearchParams(window.location.search).get("verified") === "1") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setNotice({ kind: "info", message: "Your email has been verified. Sign in to continue to your account." });
+    }
+  }, []);
+
+  const sendNewLink = () =>
+    startTransition(async () => {
+      const result = await resendVerification();
+      setNotice({ kind: result.ok ? "info" : "error", message: result.message });
+      if (result.ok) setUnverified(false);
+    });
 
   const {
     register,
@@ -55,6 +72,7 @@ export function LoginForm() {
       }
       // On success the action redirects and this component unmounts.
       const result = await signIn(values, next);
+      setUnverified(Boolean(result.unverified));
       setNotice({ kind: "error", message: result.message });
       setValue("password", "");
       setFocus("password");
@@ -123,6 +141,17 @@ export function LoginForm() {
         </div>
 
         <NoticeBox notice={notice} />
+
+        {unverified && (
+          <button
+            type="button"
+            onClick={sendNewLink}
+            disabled={pending}
+            className="-mt-1 inline-flex h-13 w-full items-center justify-center rounded-md border-[1.5px] border-wine-600 bg-white px-8 text-base font-medium text-wine-600 transition-colors duration-200 hover:bg-brand-50 focus-visible:outline-wine-600 disabled:opacity-60"
+          >
+            Send a new verification link
+          </button>
+        )}
 
         <button type="submit" disabled={pending} className={primaryButton}>
           {pending && <Spinner />}

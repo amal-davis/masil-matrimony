@@ -9,7 +9,8 @@ import { formatDate, subscriptionStatus } from "@/features/dashboard/format";
 import { STATIC_EXPORT } from "@/features/dashboard/preview-flag";
 import { getMembership } from "@/features/dashboard/server-api";
 import type { Subscription } from "@/features/dashboard/types";
-import { formatInr, membershipPackages } from "@/features/packages/packages";
+import { getPackages } from "@/features/packages/api";
+import { formatInr, validityLabel } from "@/features/packages/packages";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Membership & Upgrade" };
@@ -30,13 +31,20 @@ function validity(subscription: Subscription) {
 }
 
 /**
- * Package names, prices and benefits come from features/packages/packages.ts
- * (the same source as /our-packages). Status and dates come only from the API.
+ * Package names, prices and benefits come from the packages API (the same
+ * source as /our-packages). Status, dates and limits come only from the
+ * member's own membership API.
  */
 export default async function MembershipPage() {
-  const membership = await getMembership();
-  const { current } = membership;
-  const currentPackage = current ? membershipPackages.find((item) => item.id === current.plan_code) : undefined;
+  const [membership, catalogue] = await Promise.all([getMembership(), getPackages()]);
+  const { current, entitlements } = membership;
+  const packages = catalogue.ok ? catalogue.packages : [];
+  const paidPackages = packages.filter((item) => item.id !== "free");
+  const currentPackage = packages.find((item) => item.id === (current?.plan_code ?? "free"));
+  const freeInterests =
+    !current && entitlements.outgoing_interest_limit !== null
+      ? { used: entitlements.outgoing_interests_used ?? 0, limit: entitlements.outgoing_interest_limit }
+      : null;
   // "Days left" depends on today, so this page must render per request, never at build time.
   // (The static GitHub Pages preview can only use its build date.)
   if (!STATIC_EXPORT) await connection();
@@ -63,7 +71,7 @@ export default async function MembershipPage() {
                 <div className="min-w-0">
                   <p className="text-sm text-ivory/75">Current plan</p>
                   <h2 id="current-plan-title" className="mt-1 text-2xl font-semibold text-ivory">
-                    {current ? current.plan_name : "Free membership"}
+                    {current ? current.plan_name : (currentPackage?.name ?? "Free Membership")}
                   </h2>
                 </div>
                 <span aria-hidden="true" className="flex size-11 shrink-0 items-center justify-center rounded-full bg-gold/15 text-gold">
@@ -117,19 +125,34 @@ export default async function MembershipPage() {
                   )}
                 </>
               ) : (
-                <p className="mt-4 text-[0.9375rem] text-ivory/85">
-                  Build your profile, see matches, send and receive interests and shortlist profiles. Paid packages add
-                  contact access and personal matchmaking assistance.
-                </p>
+                <>
+                  <p className="mt-4 text-[0.9375rem] text-ivory/85">
+                    Build your profile, see matches, send and receive interests and shortlist profiles. Paid packages
+                    add unlimited interests, contact access and personal matchmaking assistance.
+                  </p>
+                  {freeInterests && (
+                    <dl className="mt-6 border-t border-white/15 pt-5">
+                      <dt className="text-sm text-ivory/70">Interests sent</dt>
+                      <dd className="mt-0.5 font-semibold text-ivory tabular-nums">
+                        {freeInterests.used} of {freeInterests.limit}
+                      </dd>
+                      <dd className="mt-1 text-sm text-ivory/75">
+                        {freeInterests.used >= freeInterests.limit
+                          ? "You've sent all the interests included with free membership."
+                          : "Free membership includes this many interests in total. Each member counts once."}
+                      </dd>
+                    </dl>
+                  )}
+                </>
               )}
             </div>
           </section>
 
           <Card
-            title={currentPackage ? "Included in your plan" : "How to upgrade"}
+            title={current && currentPackage ? "Included in your plan" : "How to upgrade"}
             titleId="benefits-title"
           >
-            {currentPackage ? (
+            {current && currentPackage ? (
               <ul className="flex flex-col gap-2.5">
                 {currentPackage.benefits.map((benefit) => (
                   <li key={benefit.title} className="flex items-start gap-2.5 text-[0.9375rem]">
@@ -169,8 +192,11 @@ export default async function MembershipPage() {
           <h2 id="packages-title" className="mb-4 text-lg font-semibold">
             {current ? "Upgrade or renew" : "Choose a package"}
           </h2>
-          <ul className="grid gap-4 md:grid-cols-3">
-            {membershipPackages.map((item) => {
+          {!catalogue.ok && (
+            <Notice tone="danger">Package details couldn&apos;t be loaded just now. Please refresh in a moment.</Notice>
+          )}
+          <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {paidPackages.map((item) => {
               const facts = item.facts.slice(0, 2);
               const isCurrent = current?.plan_code === item.id;
               return (
@@ -224,6 +250,16 @@ export default async function MembershipPage() {
                         <p className="text-sm text-ink-muted">
                           {item.starts_at ? `${formatDate(item.starts_at)} – ${formatDate(item.ends_at)}` : "Not yet activated"}
                         </p>
+                        {(item.validity_months !== null || item.package_fee !== null) && (
+                          <p className="text-sm text-ink-muted">
+                            {[
+                              item.validity_months !== null && validityLabel(item.validity_months),
+                              item.package_fee !== null && `${formatInr(Number(item.package_fee))} fee excl. GST`,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <Badge tone={subscriptionStatus[item.status].tone}>{subscriptionStatus[item.status].label}</Badge>

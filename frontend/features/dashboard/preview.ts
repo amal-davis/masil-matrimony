@@ -83,6 +83,7 @@ export const previewProfile: OwnProfile = {
   languages: ["Malayalam", "English", "Hindi"],
   visibility: "members",
   photo_visibility: "members",
+  contact_sharing: "hidden",
   partner_preference: {
     age_min: 23,
     age_max: 28,
@@ -175,10 +176,12 @@ export const previewMembership: MembershipInfo = {
     starts_at: at("2026-08-01"),
     ends_at: at("2027-08-01"),
     validity_months: 12,
+    package_fee: null,
     contact_view_limit: 100,
     contact_views_used: 12,
   },
   history: [],
+  entitlements: { package_code: "diamond", outgoing_interest_limit: null, outgoing_interests_used: null, contact_view_limit: 100 },
   online_payment_available: false,
 };
 previewMembership.history = [previewMembership.current!];

@@ -62,6 +62,13 @@ class LoginRateLimited(PasswordAuthError):
     message = "Too many unsuccessful sign-in attempts. Please try again later, or reset your password."
 
 
+class EmailNotVerified(PasswordAuthError):
+    """Right password, but the member hasn't verified their email (apps.accounts.email_verification)."""
+
+    code = "email_not_verified"
+    message = "Please verify your email address before signing in. We can send you a new verification link."
+
+
 class PasswordResetUnavailable(PasswordAuthError):
     code = "password_reset_unavailable"
     message = "Password reset by email is not available right now. Please contact us for help."
@@ -131,7 +138,11 @@ def _duration(seconds: int) -> str:
 
 
 def login_with_password(request, email: str, password: str) -> User:
-    """Return the member these credentials belong to. Raises InvalidCredentials or LoginRateLimited."""
+    """
+    Return the member these credentials belong to. Raises InvalidCredentials,
+    LoginRateLimited, or EmailNotVerified (only after the right password, so it
+    reveals nothing to anyone who doesn't know it).
+    """
     email = normalize_email(email)
     key = _attempt_key(email)
     # Checked before the password, so a locked address can't keep guessing.
@@ -151,6 +162,8 @@ def login_with_password(request, email: str, password: str) -> User:
         raise InvalidCredentials()
 
     AuthAttempt.objects.filter(key=key, kind=Kind.LOGIN_FAILURE).delete()
+    if user.email_verified_at is None:
+        raise EmailNotVerified()
     update_last_login(None, user)
     return user
 

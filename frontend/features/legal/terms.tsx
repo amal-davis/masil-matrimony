@@ -1,13 +1,11 @@
-import { membershipPackages } from "@/features/packages/packages";
-
 import { A, List, Owner, P, Pending, type LegalSection } from "./components/legal-document";
+import { PackageFeeList } from "./components/package-fee-list";
 import { legalConfig, SERVICE_NAME } from "./config";
-import { packagePriceSummary, packageTitle } from "./package-summary";
 
 /**
  * The Terms & Conditions, section by section. Describes only the features that
  * exist today and says plainly which package features are still to come.
- * Package names, fees and validity come from features/packages/packages.ts.
+ * Package names, fees and validity come from the packages API (features/packages/api.ts).
  * Owner decisions are <Pending> notes (features/legal/config.ts). Needs legal
  * review before publication.
  */
@@ -221,13 +219,7 @@ export const termsSections: LegalSection[] = [
           Registering and creating a profile is free. Paid packages add features or personal assistance. The current
           packages and fees are:
         </P>
-        <List
-          items={membershipPackages.map((pkg) => (
-            <>
-              <strong className="font-semibold">{packageTitle(pkg)}</strong>: {packagePriceSummary(pkg)}
-            </>
-          ))}
-        />
+        <PackageFeeList />
         <P>
           The full list of benefits for each package is on our <A href="/our-packages">Membership page</A>. Benefits
           marked there as subject to availability depend on service and platform availability, and features that are

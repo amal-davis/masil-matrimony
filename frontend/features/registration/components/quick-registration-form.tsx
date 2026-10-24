@@ -74,7 +74,7 @@ export function QuickRegistrationForm({ className }: { className?: string }) {
         setNotice({ kind: "error", message: "Design preview: registration isn't available, and nothing was saved." });
         return;
       }
-      // The raw input is sent; the Server Action validates it again. On success it redirects.
+      // The raw input is sent; the Server Action validates it again. On success it redirects to /check-email.
       const result = await registerMember(getValues());
       const fieldErrors = result.fieldErrors ?? {};
       for (const field of FIELD_ORDER) {
@@ -278,6 +278,9 @@ export function QuickRegistrationForm({ className }: { className?: string }) {
           {pending && <Spinner />}
           {pending ? "Creating your account…" : "Register free"}
         </button>
+        <p className="-mt-2 text-sm leading-relaxed text-ink-muted">
+          We&apos;ll email you a link to verify your address. You can sign in once it&apos;s verified.
+        </p>
 
       </form>
     </div>

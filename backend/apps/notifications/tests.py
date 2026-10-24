@@ -71,8 +71,11 @@ class ProviderSelectionTests(SimpleTestCase):
 
     def load_production_settings(self, **overrides):
         """Import production settings in a fresh interpreter; return (exit code, stderr)."""
+        # The developer's own email/SMS settings (loaded from backend/.env into this process)
+        # must not leak into the check.
+        mine = ("EMAIL_", "DEFAULT_FROM_EMAIL", "FRONTEND_URL", "SUPPORT_EMAIL", "SMS_", "MSG91_")
         env = {
-            **os.environ,
+            **{key: value for key, value in os.environ.items() if not key.startswith(mine)},
             "DJANGO_READ_ENV_FILE": "False",
             "DJANGO_SECRET_KEY": "x" * 60,
             "DJANGO_ALLOWED_HOSTS": "api.example.com",

@@ -152,6 +152,7 @@ class OwnProfileSerializer(serializers.ModelSerializer):
             "languages",
             "visibility",
             "photo_visibility",
+            "contact_sharing",
             "partner_preference",
         ]
         read_only_fields = ["profile_code", "status", "review_note", "submitted_at", "identity_locked"]
@@ -274,6 +275,7 @@ def card_data(viewer, profile, request) -> dict:
 def detail_data(viewer, profile, request) -> dict:
     """The full profile page, privacy-filtered. Never includes contact details or date of birth."""
     from apps.interactions.models import Interest, Shortlist
+    from apps.interactions.services import contact_status
 
     pref = getattr(profile, "partner_preference", None)
     is_own = viewer is not None and viewer.pk == profile.pk
@@ -325,5 +327,7 @@ def detail_data(viewer, profile, request) -> dict:
             "interest_sent": {"id": str(sent.public_id), "status": sent.status} if sent else None,
             "interest_received": {"id": str(received.public_id), "status": received.status} if received else None,
             "shortlisted": bool(viewer and not is_own and Shortlist.objects.filter(owner=viewer, profile=profile).exists()),
+            # Whether the viewer may see this member's number (POST .../contact/ shows it).
+            "contact": contact_status(viewer, profile) if viewer and not is_own else None,
         },
     }

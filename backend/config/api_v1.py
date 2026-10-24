@@ -3,7 +3,7 @@ from django.conf import settings
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-from apps.memberships.views import MyMembershipView
+from apps.memberships.views import MyMembershipView, PackageListView
 from apps.profiles.dashboard import DashboardSummaryView
 
 urlpatterns = [
@@ -13,6 +13,7 @@ urlpatterns = [
     path("profiles/", include("apps.profiles.urls")),
     path("", include("apps.interactions.urls")),
     path("notifications/", include("apps.notifications.urls")),
+    path("memberships/packages/", PackageListView.as_view(), name="membership-packages"),
     path("memberships/me/", MyMembershipView.as_view(), name="membership-me"),
     path("dashboard/summary/", DashboardSummaryView.as_view(), name="dashboard-summary"),
 ]

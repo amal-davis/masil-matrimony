@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 
-import { ACCESS_COOKIE, REFRESH_COOKIE, REMEMBER_COOKIE } from "./constants";
+import { ACCESS_COOKIE, PENDING_EMAIL_COOKIE, REFRESH_COOKIE, REMEMBER_COOKIE } from "./constants";
 import { sessionCookies, SESSION_COOKIE_NAMES, type TokenPair } from "./tokens";
 
 /**
@@ -30,4 +30,12 @@ export async function endSession(): Promise<string | undefined> {
 /** The current access token, if the browser has one. */
 export async function accessToken(): Promise<string | undefined> {
   return (await cookies()).get(ACCESS_COOKIE)?.value;
+}
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** The address waiting for verification on this browser (PENDING_EMAIL_COOKIE), if any. */
+export async function pendingEmail(): Promise<string | undefined> {
+  const value = (await cookies()).get(PENDING_EMAIL_COOKIE)?.value;
+  return value && value.length <= 254 && EMAIL_PATTERN.test(value) ? value : undefined;
 }

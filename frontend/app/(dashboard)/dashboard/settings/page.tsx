@@ -67,7 +67,13 @@ export default async function SettingsPage() {
 
         <SettingsGroup id="privacy-title" title="Privacy" description="Choose who can see your profile and photos. Your contact details are never shown on your profile.">
           {profile ? (
-            <PrivacySettings initial={{ visibility: profile.visibility, photo_visibility: profile.photo_visibility }} />
+            <PrivacySettings
+              initial={{
+                visibility: profile.visibility,
+                photo_visibility: profile.photo_visibility,
+                contact_sharing: profile.contact_sharing,
+              }}
+            />
           ) : (
             <p className="text-[0.9375rem] text-ink-muted">
               Privacy settings become available once you{" "}

@@ -36,7 +36,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     # Grants access to the Django admin site only; API access is governed by role.
     is_staff = models.BooleanField(default=False)
+    # Members can't sign in or use member APIs until this is set (apps.accounts.email_verification).
+    # Separate from is_active, which is the administrator's suspension switch.
     email_verified_at = models.DateTimeField(null=True, blank=True)
+    # When the newest verification link was issued; earlier links stop working.
+    email_verification_sent_at = models.DateTimeField(null=True, blank=True, editable=False)
     phone_verified_at = models.DateTimeField(null=True, blank=True)
     date_joined = models.DateTimeField(default=timezone.now)
 
@@ -116,7 +120,7 @@ class PhoneOTPChallenge(models.Model):
 
 class AuthAttempt(models.Model):
     """
-    A failed password login, or a password-reset request, for one email address.
+    A failed password login, a password-reset request or a verification email, for one email address.
     Counted per address over a time window (see apps.accounts.password_auth) so
     the limits hold across API processes, like the SMS limits above.
 
@@ -127,6 +131,7 @@ class AuthAttempt(models.Model):
     class Kind(models.TextChoices):
         LOGIN_FAILURE = "login_failure", "Failed login"
         PASSWORD_RESET = "password_reset", "Password reset request"
+        VERIFICATION_EMAIL = "verify_email", "Verification email"
 
     kind = models.CharField(max_length=16, choices=Kind.choices)
     key = models.CharField(max_length=64)

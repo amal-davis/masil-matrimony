@@ -3,7 +3,7 @@
 import { refresh } from "next/cache";
 
 import { memberMutate, type MutationResult } from "./server-api";
-import type { InterestItem, OwnPhoto, OwnProfile, PartnerPreference } from "./types";
+import type { ContactStatus, InterestItem, OwnPhoto, OwnProfile, PartnerPreference } from "./types";
 
 /**
  * Dashboard mutations. Each one calls the member API as the signed-in member
@@ -76,6 +76,16 @@ export async function withdrawInterest(interestId: string) {
 export async function sendInterest(profileCode: string) {
   if (!PROFILE_CODE.test(profileCode)) return invalid;
   return andRefresh(memberMutate<InterestItem>("post", "/interests/", { profile_code: profileCode }, `/profile/${profileCode}`));
+}
+
+/**
+ * Show a member's mobile number. The API checks the membership, the member's
+ * consent and the package limit, and counts the view; the number is returned
+ * only to this caller and never stored in the page.
+ */
+export async function viewContactNumber(profileCode: string) {
+  if (!PROFILE_CODE.test(profileCode)) return invalid;
+  return andRefresh(memberMutate<ContactStatus>("post", `/profiles/${profileCode}/contact/`, undefined, `/profile/${profileCode}`));
 }
 
 export async function addToShortlist(profileCode: string) {

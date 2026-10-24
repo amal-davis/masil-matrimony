@@ -1,13 +1,17 @@
 import uuid
+from datetime import timedelta
 
 from django.test import TestCase
+from django.utils import timezone
 
+from apps.memberships.models import MembershipPackage, Subscription
+from apps.memberships.tests import subscribe
 from apps.notifications.models import Notification, NotificationKind
 from apps.profiles.choices import ProfileStatus, Visibility
 from apps.profiles.models import Profile
 from apps.profiles.test_utils import client_for, make_profile, make_user
 
-from .models import Interest, InterestStatus, Shortlist
+from .models import ContactView, Interest, InterestStatus, Shortlist
 
 SEND = "/api/v1/interests/"
 RECEIVED = "/api/v1/interests/received/"
@@ -229,3 +233,153 @@ class ShortlistTests(TestCase):
         self.assertEqual(other.get(SHORTLIST).json()["count"], 0)
         other.delete(f"{SHORTLIST}{self.bride.profile_code}/")
         self.assertEqual(Shortlist.objects.count(), 1)
+
+
+class FreeInterestLimitTests(TestCase):
+    """Free members may send 15 interests in total (one per member, no reset); paid members are unlimited."""
+
+    def setUp(self):
+        self.groom = make_profile(gender="male")
+        self.client = client_for(self.groom.user)
+        self.brides = [make_profile(gender="female") for _ in range(17)]
+
+    def send(self, bride):
+        return self.client.post(SEND, {"profile_code": bride.profile_code}, format="json")
+
+    def test_sixteenth_interest_is_refused(self):
+        for bride in self.brides[:15]:
+            self.assertEqual(self.send(bride).status_code, 201)
+        response = self.send(self.brides[15])
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["code"], "interest_limit_reached")
+        self.assertEqual(Interest.objects.filter(sender=self.groom).count(), 15)
+        self.assertEqual(
+            self.client.get("/api/v1/memberships/me/").json()["entitlements"]["outgoing_interests_used"], 15
+        )
+
+    def test_withdrawing_does_not_free_a_slot_and_resending_is_not_counted_again(self):
+        for bride in self.brides[:15]:
+            self.send(bride)
+        interest = Interest.objects.get(sender=self.groom, receiver=self.brides[0])
+        self.client.post(action_url(interest.public_id, "withdraw"))
+        self.assertEqual(self.send(self.brides[15]).status_code, 403)
+        # The same member again: already counted, so it's allowed.
+        self.assertEqual(self.send(self.brides[0]).status_code, 201)
+
+    def test_paid_members_are_unlimited(self):
+        subscribe(self.groom.user, "silver")
+        for bride in self.brides:
+            self.assertEqual(self.send(bride).status_code, 201)
+        self.assertFalse(Interest.objects.filter(sender=self.groom, counts_toward_free_limit=True).exists())
+
+    def test_interests_sent_while_paid_do_not_count_after_expiry(self):
+        subscription = subscribe(self.groom.user, "silver")
+        for bride in self.brides[:16]:
+            self.send(bride)
+        subscription.ends_at = timezone.now() - timedelta(seconds=1)
+        subscription.save()
+        self.assertEqual(self.send(self.brides[16]).status_code, 201)
+        self.assertEqual(Interest.objects.filter(sender=self.groom, counts_toward_free_limit=True).count(), 1)
+
+    def test_limit_comes_from_the_package(self):
+        MembershipPackage.objects.filter(code="free").update(outgoing_interest_limit=2)
+        self.assertEqual(self.send(self.brides[0]).status_code, 201)
+        self.assertEqual(self.send(self.brides[1]).status_code, 201)
+        self.assertEqual(self.send(self.brides[2]).status_code, 403)
+
+
+class ContactNumberTests(TestCase):
+    def setUp(self):
+        self.groom = make_profile(gender="male")
+        self.bride = make_profile(gender="female", contact_sharing="paid_members")
+        self.client = client_for(self.groom.user)
+        self.url = f"/api/v1/profiles/{self.bride.profile_code}/contact/"
+
+    def test_free_member_gets_no_number(self):
+        status = self.client.get(self.url).json()
+        self.assertEqual(status["access"], "not_included")
+        self.assertNotIn("phone_number", status)
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["code"], "not_included")
+        self.assertNotIn(self.bride.user.phone_number, response.content.decode())
+
+    def test_assisted_packages_have_no_self_service_access(self):
+        for code in ("platinum", "royal"):
+            with self.subTest(plan=code):
+                subscription = subscribe(self.groom.user, code)
+                self.assertEqual(self.client.post(self.url).json()["code"], "not_included")
+                subscription.delete()
+
+    def test_paid_member_views_number_once_per_member(self):
+        subscription = subscribe(self.groom.user, "silver")
+        self.assertEqual(self.client.get(self.url).json()["access"], "available")
+        body = self.client.post(self.url).json()
+        self.assertEqual(body["phone_number"], self.bride.user.phone_number)
+        self.assertEqual(body["used"], 1)
+        self.assertEqual(body["limit"], 40)
+        # Viewing the same member again doesn't use another view.
+        body = self.client.post(self.url).json()
+        self.assertEqual(body["used"], 1)
+        subscription.refresh_from_db()
+        self.assertEqual(subscription.contact_views_used, 1)
+        self.assertEqual(ContactView.objects.filter(subscription=subscription).count(), 1)
+        self.assertEqual(self.client.get(self.url).json()["access"], "viewed")
+
+    def test_limit_reached(self):
+        subscription = subscribe(self.groom.user, "silver")
+        Subscription.objects.filter(pk=subscription.pk).update(contact_views_used=40)
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["code"], "limit_reached")
+        self.assertNotIn("phone_number", response.json())
+
+    def test_requires_the_members_consent(self):
+        subscribe(self.groom.user, "gold")
+        Profile.objects.filter(pk=self.bride.pk).update(contact_sharing="hidden")
+        self.assertEqual(self.client.post(self.url).json()["code"], "not_shared")
+        self.assertFalse(ContactView.objects.exists())
+
+    def test_withdrawn_consent_hides_a_number_already_viewed(self):
+        subscribe(self.groom.user, "gold")
+        self.assertEqual(self.client.post(self.url).status_code, 200)
+        Profile.objects.filter(pk=self.bride.pk).update(contact_sharing="hidden")
+        self.assertEqual(self.client.post(self.url).status_code, 403)
+
+    def test_expired_subscription_loses_access(self):
+        subscription = subscribe(self.groom.user, "diamond")
+        subscription.ends_at = timezone.now() - timedelta(seconds=1)
+        subscription.save()
+        self.assertEqual(self.client.post(self.url).json()["code"], "not_included")
+
+    def test_new_subscription_has_its_own_count(self):
+        old = subscribe(self.groom.user, "silver")
+        self.client.post(self.url)
+        old.ends_at = timezone.now() - timedelta(seconds=1)
+        old.save()
+        new = subscribe(self.groom.user, "gold")
+        self.assertEqual(self.client.get(self.url).json()["access"], "available")
+        self.assertEqual(self.client.post(self.url).json()["used"], 1)
+        new.refresh_from_db()
+        self.assertEqual(new.contact_views_used, 1)
+
+    def test_hidden_or_own_profile(self):
+        subscribe(self.groom.user, "silver")
+        own = f"/api/v1/profiles/{self.groom.profile_code}/contact/"
+        self.assertEqual(self.client.post(own).status_code, 409)
+        Profile.objects.filter(pk=self.bride.pk).update(visibility=Visibility.HIDDEN)
+        self.assertEqual(self.client.post(self.url).status_code, 404)
+
+    def test_unapproved_viewer(self):
+        subscribe(self.groom.user, "silver")
+        Profile.objects.filter(pk=self.groom.pk).update(status=ProfileStatus.PENDING_REVIEW)
+        self.assertEqual(self.client.post(self.url).json()["code"], "profile_not_active")
+
+    def test_signed_out(self):
+        self.assertEqual(client_for().post(self.url).status_code, 401)
+
+    def test_profile_detail_reports_status_without_number(self):
+        subscribe(self.groom.user, "silver")
+        response = self.client.get(f"/api/v1/profiles/{self.bride.profile_code}/")
+        self.assertEqual(response.json()["viewer"]["contact"]["access"], "available")
+        self.assertNotIn(self.bride.user.phone_number, response.content.decode())

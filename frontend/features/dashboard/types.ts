@@ -1,3 +1,5 @@
+import type { PackageCode } from "@/features/packages/packages";
+
 /** Shapes of the member API responses used by the dashboard (backend/apps/*). */
 
 export type ProfileStatus = "draft" | "pending_review" | "active" | "rejected" | "suspended";
@@ -69,6 +71,7 @@ export interface OwnProfile {
   languages: string[];
   visibility: "members" | "hidden";
   photo_visibility: "members" | "accepted";
+  contact_sharing: "hidden" | "paid_members";
   partner_preference: PartnerPreference;
 }
 
@@ -147,20 +150,52 @@ export interface Paginated<T> {
 
 export interface Subscription {
   id: string;
-  plan_code: "diamond" | "platinum" | "royal";
+  plan_code: Exclude<PackageCode, "free">;
   plan_name: string;
   status: "pending" | "active" | "expired" | "upcoming" | "cancelled";
   starts_at: string | null;
   ends_at: string | null;
-  validity_months: number;
+  /** The terms stored when the subscription was recorded; later package changes don't alter them. */
+  validity_months: number | null;
+  /** Fee excluding GST when recorded ("12000.00"); null for subscriptions recorded before fees were stored. */
+  package_fee: string | null;
   contact_view_limit: number | null;
   contact_views_used: number | null;
+}
+
+/** What the member's current membership allows, decided by the backend. */
+export interface Entitlements {
+  package_code: PackageCode;
+  /** Null = unlimited. */
+  outgoing_interest_limit: number | null;
+  /** Counted only while on a package with a limit (Free). */
+  outgoing_interests_used: number | null;
+  contact_view_limit: number | null;
 }
 
 export interface MembershipInfo {
   current: Subscription | null;
   history: Subscription[];
+  entitlements: Entitlements;
   online_payment_available: boolean;
+}
+
+export type ContactAccess =
+  | "available"
+  | "viewed"
+  | "profile_not_active"
+  | "not_included"
+  | "not_shared"
+  | "limit_reached"
+  | "no_number";
+
+/** GET/POST /profiles/<code>/contact/. `phone_number` only comes back from POST. */
+export interface ContactStatus {
+  access: ContactAccess;
+  message: string;
+  limit: number | null;
+  used: number | null;
+  phone_number?: string;
 }
 
 export interface NotificationItem {
@@ -245,5 +280,6 @@ export interface MemberProfileDetail extends MemberCard {
     interest_sent: { id: string; status: InterestStatus } | null;
     interest_received: { id: string; status: InterestStatus } | null;
     shortlisted: boolean;
+    contact: ContactStatus | null;
   };
 }

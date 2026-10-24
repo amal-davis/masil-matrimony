@@ -10,7 +10,7 @@ import type { QuickRegistrationInput } from "@/features/registration/schema";
 
 import type { LoginValues } from "./schema";
 
-export type SignInResult = { ok: false; message: string };
+export type SignInResult = { ok: false; message: string; unverified?: boolean };
 
 export type RegisterField =
   | "createdFor"
@@ -25,6 +25,19 @@ export type RegisterField =
 export type RegisterResult = { ok: false; message?: string; fieldErrors?: Partial<Record<RegisterField, string>> };
 
 export type ForgotPasswordResult = { ok: true } | { ok: false; message: string };
+
+export type ResendVerificationResult =
+  | { ok: true; message: string; consoleOnly: boolean }
+  | { ok: false; message: string; needsEmail?: boolean };
+
+export type ChangeEmailResult =
+  | { ok: true; email: string; consoleOnly: boolean }
+  | { ok: false; message: string; field?: "password" | "newEmail" };
+
+export type VerifyEmailResult =
+  /** `signedIn`: the session cookies are set, so the member can go straight to the dashboard. */
+  | { ok: true; message: string; signedIn: boolean }
+  | { ok: false; reason: "expired" | "invalid" | "used" | "error"; message: string };
 
 export type ResetPasswordResult =
   | { ok: true }
@@ -59,5 +72,21 @@ export async function resetPassword(
   void token;
   void password;
   void confirm;
+  return { ok: false, reason: "error", message: MESSAGE };
+}
+
+export async function resendVerification(email?: string): Promise<ResendVerificationResult> {
+  void email;
+  return { ok: false, message: MESSAGE };
+}
+
+export async function changeUnverifiedEmail(password: string, newEmail: string): Promise<ChangeEmailResult> {
+  void password;
+  void newEmail;
+  return { ok: false, message: MESSAGE };
+}
+
+export async function verifyEmail(token: string): Promise<VerifyEmailResult> {
+  void token;
   return { ok: false, reason: "error", message: MESSAGE };
 }

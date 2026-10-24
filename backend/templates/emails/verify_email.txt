@@ -1,0 +1,16 @@
+{% autoescape off %}{{ greeting }}
+
+Welcome to {{ site_name }}. Please confirm that this is your email address to finish creating your account. You can sign in and open your member dashboard once it is verified.
+
+Verify your email address:
+{{ verify_url }}
+
+This link expires in {{ expires_in }} and works once. If you ask for another link, only the newest one will work.
+
+If you didn't create a {{ site_name }} account, you can safely ignore this email. No account will be activated without this confirmation.
+
+{% if support_email %}Need help? Write to us at {{ support_email }}.{% else %}Need help? Contact us through our website: {{ contact_url }}{% endif %}
+
+{{ site_name }}
+{{ site_url }}
+{% endautoescape %}
