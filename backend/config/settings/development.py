@@ -1,4 +1,6 @@
 """Local development settings. Uses the MySQL database configured in .env."""
+from django.core.exceptions import ImproperlyConfigured
+
 from config.env import env, mysql_database_config
 
 from .base import *  # noqa: F401,F403
@@ -37,3 +39,7 @@ ADMIN_ENVIRONMENT_NAME = env.str("ADMIN_ENVIRONMENT_NAME", default="Development"
 
 # Login codes are written to the server log until a real SMS provider is configured.
 SMS_PROVIDER = env.str("SMS_PROVIDER", default="console").strip().lower()
+
+# Real money only moves from production settings (production.py checks the live requirements).
+if RAZORPAY_MODE == "live":  # noqa: F405
+    raise ImproperlyConfigured("RAZORPAY_MODE=live is refused in development. Use rzp_test_ keys.")

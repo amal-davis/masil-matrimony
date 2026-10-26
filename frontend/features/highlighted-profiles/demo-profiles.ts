@@ -8,7 +8,8 @@ import type { HighlightedProfile } from "./types";
  * it opens always show the same person. These are not real people and have no
  * photos on purpose: the card shows an illustrated avatar instead.
  *
- * Remove this file once GET /profiles/highlighted/ is implemented; see api.ts.
+ * Used only by the static design preview, which has no API (see api.ts). Real
+ * visitors always get GET /profiles/highlighted/.
  */
 export const demoProfiles: HighlightedProfile[] = demoProfileDetails.map(
   ({ id, profileCode, displayName, gender, age, education, location, photos, isVerified }) => ({

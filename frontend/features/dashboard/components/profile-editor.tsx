@@ -10,6 +10,7 @@ import {
   ageOptions,
   annualIncomeOptions,
   communitiesFor,
+  communitiesForReligions,
   createdForOptions,
   dietOptions,
   employmentTypeOptions,
@@ -19,6 +20,7 @@ import {
   heightOptions,
   maritalStatusOptions,
   motherTongueOptions,
+  mustHaveOptions,
   optionLabel,
   religionOptions,
   type Option,
@@ -130,7 +132,8 @@ export const profileSections: SectionDef[] = [
   {
     id: "preferences",
     title: "Partner Preferences",
-    description: "Used to suggest matches. Leave a field empty if you have no preference.",
+    description:
+      "Used to find and rank your matches. Leave a field empty if you have no preference. Matches update as soon as you save.",
     target: "preference",
     fields: [
       { name: "age_min", label: "Minimum age", kind: "select", options: ageOptions, numeric: true },
@@ -139,9 +142,27 @@ export const profileSections: SectionDef[] = [
       { name: "height_max_cm", label: "Maximum height", kind: "select", options: heightOptions, numeric: true },
       { name: "marital_statuses", label: "Marital status", kind: "multi", options: maritalStatusOptions, wide: true },
       { name: "religions", label: "Religion", kind: "multi", options: religionOptions, wide: true },
-      { name: "locations", label: "Preferred locations", kind: "text", maxLength: 120 },
-      { name: "education", label: "Education", kind: "text", maxLength: 120 },
-      { name: "occupation", label: "Occupation", kind: "text", maxLength: 120 },
+      {
+        name: "communities",
+        label: "Community / denomination",
+        kind: "multi",
+        options: (values) => communitiesForReligions(Array.isArray(values.religions) ? values.religions : []),
+        hint: "Shows the communities of the religions you chose above.",
+        wide: true,
+      },
+      { name: "mother_tongues", label: "Mother tongue", kind: "multi", options: motherTongueOptions, wide: true },
+      { name: "diets", label: "Diet", kind: "multi", options: dietOptions, wide: true },
+      { name: "locations", label: "Preferred locations", kind: "text", maxLength: 120, hint: "Cities, districts or states, separated by commas. For example: Kochi, Thrissur" },
+      { name: "education", label: "Education", kind: "text", maxLength: 120, hint: "Separate with commas. For example: B.Tech, MBA" },
+      { name: "occupation", label: "Occupation", kind: "text", maxLength: 120, hint: "Separate with commas. For example: Engineer, Doctor" },
+      {
+        name: "must_haves",
+        label: "Must-haves",
+        kind: "multi",
+        options: mustHaveOptions,
+        hint: "Profiles that don't meet a must-have are never shown. Your other preferences only decide the order and the match score. A must-have applies once you fill in that preference.",
+        wide: true,
+      },
       { name: "notes", label: "Anything else", kind: "textarea", maxLength: 500, wide: true },
     ],
   },
@@ -177,7 +198,8 @@ function toPayloadValue(field: FieldDef, value: FormValue): unknown {
 function displayValue(field: FieldDef, value: FormValue, values: FormValues): ReactNode {
   if (field.kind === "checkbox") return value ? "Yes" : "No";
   if (field.kind === "multi") {
-    const labels = (value as string[]).map((item) => optionLabel(field.options as Option[], item)).filter(Boolean);
+    const options = typeof field.options === "function" ? field.options(values) : field.options ?? [];
+    const labels = (value as string[]).map((item) => optionLabel(options, item)).filter(Boolean);
     return labels.length ? labels.join(", ") : "";
   }
   if (field.name === "height_cm" || field.name.startsWith("height_")) return heightLabel(String(value));
@@ -371,6 +393,13 @@ function ProfileSection({
     if (section.id === "personal" && "religion" in payload && !("community" in payload)) {
       const community = String(values.community ?? "");
       if (community && !communitiesFor(String(values.religion)).some((option) => option.value === community)) payload.community = "";
+    }
+    if (section.id === "preferences" && "religions" in payload) {
+      // Preferred communities of religions no longer chosen would still count, unseen: drop them.
+      const religions = Array.isArray(values.religions) ? values.religions : [];
+      const offered = new Set(communitiesForReligions(religions).map((option) => option.value));
+      const communities = Array.isArray(values.communities) ? values.communities : [];
+      if (communities.some((value) => !offered.has(value))) payload.communities = communities.filter((value) => offered.has(value));
     }
     startSaving(async () => {
       const result = section.target === "preference" ? await updatePartnerPreference(payload) : await updateProfile(payload);

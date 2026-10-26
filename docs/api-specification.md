@@ -90,124 +90,117 @@ HTTP/1.1 503 Service Unavailable
 
 Neither endpoint returns configuration, versions of server software, hostnames or error details.
 
-### `POST /auth/register/` — create an unverified member account and draft profile (public, throttled)
+### Member authentication: SMS one-time codes
+
+Members register and log in with a one-time code sent by SMS to their mobile number. There is no
+member password and no email verification; email is optional contact information. Staff keep
+email + password (Django admin and `/auth/token/`). Codes are generated and checked by this API
+(`apps/accounts/otp.py`, only a keyed hash is stored); the SMS provider only delivers them.
+
+Mobile numbers may be sent in any common written form (`"+91 98765 43210"`, `"0091 9876543210"`)
+and are normalised to E.164 (`+919876543210`). Only countries in `SMS_ALLOWED_COUNTRY_CODES`
+(default `91`) are accepted; Indian numbers must be mobiles (10 digits starting 6–9).
+
+Limits, shared by registration and login for the same number: `OTP_RESEND_COOLDOWN_SECONDS` (60)
+between codes, `OTP_MAX_REQUESTS_PER_HOUR` (5) and `OTP_MAX_REQUESTS_PER_DAY` (10) per number,
+`OTP_TTL_SECONDS` (300) per code, `OTP_MAX_VERIFY_ATTEMPTS` (5) wrong guesses per code. A new code
+invalidates any earlier one for the number. Per IP: `API_THROTTLE_REGISTER`, `API_THROTTLE_OTP_REQUEST`
+(`10/hour`), `API_THROTTLE_OTP_VERIFY` (`20/hour`).
+
+Every endpoint that sends a code answers `202` with:
 
 ```json
-// request
-{"email": "member@example.com", "password": "…", "phone_number": "+919876543210", "accept_terms": true,
- "created_for": "self", "display_name": "Anjali Menon", "gender": "female", "date_of_birth": "2000-01-01"}
-// 201 — no tokens: the member verifies their email, then signs in
-{"detail": "Check your email. …", "email": "member@example.com", "email_sent": true}
-// 400 — field errors, e.g. a taken mobile number, a weak password, or under the minimum age
-{"phone_number": ["An account already uses this mobile number. …"], "password": ["This password is too common."]}
-// 503 — email can't be sent at all (EMAIL_PROVIDER unset), so no account is created
-{"detail": "…", "code": "email_unavailable"}
+{"challenge_id": "<uuid>", "phone_number": "+919876543210", "code_length": 6, "expires_in": 300, "resend_after": 60}
 ```
 
-One password field (no confirmation; the website offers show/hide). The password goes through
-`AUTH_PASSWORD_VALIDATORS`, including similarity to the email and name. The profile fields use the
-dashboard's `CreateProfileSerializer` rules (name format, minimum age 18 for women / 21 for men), and
-the profile starts as a `draft` for the member to complete and submit for review.
+and may fail with `429 {"code": "otp_rate_limited", "retry_after": 42}` (also a `Retry-After`
+header), `503 {"code": "otp_unavailable"}` (no `SMS_PROVIDER`) or `503 {"code": "otp_delivery_failed"}`
+(the provider didn't accept the message; nothing is kept, so retrying immediately is allowed).
 
-The account starts unverified and a verification link is emailed
-(apps/accounts/email_verification.py). `email_sent: false` means the account exists but the email
-couldn't be handed to the mail server; the member can resend. **A registered email gets the same 201
-answer**: the details typed are discarded, and only the address's owner is emailed (a new link if
-unverified, an "already have an account" note if verified), so the form doesn't reveal registered
-addresses. A taken mobile number with a new email is still reported on the field;
-`API_THROTTLE_REGISTER` (`10/hour` per IP) limits probing. Mobile numbers are not verified at registration.
+### `POST /auth/register/` — start a registration (public, throttled)
 
-### Email verification (public, throttled)
+```json
+// request (email required: payment receipts are sent there)
+{"phone_number": "+919876543210", "email": "member@example.com", "accept_terms": true,
+ "created_for": "self", "display_name": "Anu K", "gender": "female", "date_of_birth": "1998-05-01"}
+// 202 — code sent; no account exists yet
+// 400 — field errors (profile rules, minimum age, invalid number, email used by another account)
+// 409 — the number already has an account: log in instead
+{"detail": "An account already uses this mobile number. Please log in instead.", "code": "phone_registered",
+ "phone_number": ["…"]}
+```
 
-| Endpoint | Behaviour |
-|----------|-----------|
-| `POST /auth/email/verify/` `{"token"}` | Verifies the account the emailed link belongs to. `200`; `410 verification_link_expired` (after `EMAIL_VERIFICATION_TIMEOUT_SECONDS`, 24 h); `410 email_already_verified` (spent link); `400 verification_link_invalid` (tampered, superseded by a newer link, or the address changed). Signs nobody in. Throttle `API_THROTTLE_EMAIL_VERIFY`. |
-| `POST /auth/email/resend/` `{"email"}` | New link to an unverified member, superseding earlier ones. The same `202` for unknown, verified, staff and suspended addresses (which get nothing). `429 verification_rate_limited` after `EMAIL_VERIFICATION_MAX_PER_HOUR` (3) per address, counted for every address; `503` when the email couldn't be sent. Throttle `API_THROTTLE_EMAIL_RESEND`. |
-| `POST /auth/email/change/` `{"email", "password", "new_email"}` | Corrects the address of an account that isn't verified yet, proven by its password (failures count toward the sign-in lock), and sends a link to the new address. `400 invalid_credentials`, `403 email_change_not_allowed` (already verified), `409 email_taken`. Throttle `API_THROTTLE_EMAIL_CHANGE`. |
+The validated details are kept on the code's challenge (`PhoneOTPChallenge.registration`). If the
+code is never entered, no account is ever created; `purge_otp_challenges` deletes the details a day
+after the code expires. Saying a number is taken lets people probe numbers; the per-IP throttle limits that.
 
-Links look like `{FRONTEND_URL}/verify-email#token=…`: the token is in the fragment, so browsers never
-send it to a server. Unverified members are refused everywhere else: `/auth/login/` and
-`/auth/otp/verify/` answer `403 email_not_verified` (only after the right password or code),
-`/auth/token/` and `/auth/token/refresh/` refuse them (`SIMPLE_JWT["USER_AUTHENTICATION_RULE"]`), and
-every member API answers `403 {"code": "email_not_verified"}`. `is_active` remains the separate
-suspension switch.
+### `POST /auth/register/resend/` — new registration code (public, throttled)
 
-### `POST /auth/login/` — website sign-in with email and password (public, throttled)
+`{"challenge_id": "<uuid>", "phone_number": "+91…" (optional)}`. Sends a new code for the same
+registration, optionally to a corrected number, without the details being sent again. `202`; `409
+phone_registered` for a corrected number that has an account; `410 registration_expired` when the
+registration was completed, is unknown, or its last code is older than `OTP_REGISTRATION_WINDOW_SECONDS` (3600).
 
-Members only (`role=member`, active, with a usable password). The website's Server Action calls
-this; mobile apps and staff tools use `/auth/token/` below. The email is trimmed and lower-cased
-the way `accounts.User` stores it, and the password is checked by Django's `ModelBackend`.
+### `POST /auth/register/verify/` — complete the registration (public, throttled)
 
 ```json
 // request
-{"email": "member@example.com", "password": "…"}
+{"challenge_id": "<uuid>", "code": "123456"}
+// 201 — account (mobile verified, unusable password) and draft profile created; signed in
+{"access": "<jwt>", "refresh": "<jwt>"}
+// 400 — the code errors in the table below
+// 409 — phone_registered / email_taken: another account took the number or address meanwhile
+```
+
+### `POST /auth/otp/request/` — send a login code (public, throttled)
+
+`{"phone_number": "+919876543210"}`. Members only (`role=member`, active). The `202` is identical
+whether or not the number has an eligible account; for others no SMS is sent and the challenge can
+never verify, so the endpoint doesn't reveal which numbers are registered. Never creates an account.
+
+### `POST /auth/otp/verify/` — exchange the code for tokens (public, throttled)
+
+```json
+// request
+{"challenge_id": "<uuid>", "code": "123456"}
+// 200 — token pair; marks the mobile number verified if it wasn't (legacy accounts)
+{"access": "<jwt>", "refresh": "<jwt>"}
+// 400
+{"detail": "That code is incorrect.", "code": "otp_incorrect", "attempts_remaining": 4}
+```
+
+| `code` | Meaning | Can the same challenge be retried? |
+|--------|---------|------------------------------------|
+| `otp_incorrect` | Wrong code (always, for unregistered numbers at login) | Yes, until attempts run out |
+| `otp_expired` | Older than `OTP_TTL_SECONDS` (300) | No |
+| `otp_used` | Already used | No |
+| `otp_attempts_exceeded` | `OTP_MAX_VERIFY_ATTEMPTS` (5) wrong guesses | No |
+| `otp_invalid` | Unknown, superseded or wrong-purpose challenge, or the account changed (suspended, number changed) | No |
+
+Malformed input (`400` with field errors) is not counted as a guess. A login code can't complete a
+registration and vice versa.
+
+### Mobile verification gate
+
+Members whose `phone_verified_at` is empty can't use the site: `/auth/token/refresh/` refuses them
+(`SIMPLE_JWT["USER_AUTHENTICATION_RULE"]`) and member APIs answer `403 {"code": "phone_not_verified"}`.
+A successful SMS login sets it. Changing a member's number clears it. `is_active` remains the
+separate suspension switch. Email verification no longer gates anything.
+
+### `POST /auth/token/` — obtain tokens with email + password (staff only, throttled)
+
+For staff API clients. Members get the same `401` as a wrong password, even if they still have a
+password from the old email sign-in.
+
+```json
+// request
+{"email": "staff@example.com", "password": "…"}
 // 200
 {"access": "<jwt>", "refresh": "<jwt>"}
-// 400 — the same for a wrong password, unknown email, staff, inactive or password-less account
-{"detail": "The email address or password is incorrect.", "code": "invalid_credentials"}
-// 403 — right password, but the email address isn't verified yet
-{"detail": "Please verify your email address before signing in. …", "code": "email_not_verified"}
-// 429 — too many failures for this address (Retry-After header too)
-{"detail": "Too many unsuccessful sign-in attempts. …", "code": "login_rate_limited", "retry_after": 600}
 ```
 
-- Per address: `LOGIN_MAX_FAILURES` (10) failures per `LOGIN_FAILURE_WINDOW_SECONDS` (900) lock it
-  until the oldest failure leaves the window, even for the right password. Counted in MySQL
-  (`accounts_authattempt`, keyed by an HMAC of the address, not the address itself). Unknown
-  addresses lock the same way. A successful sign-in or password reset clears the count.
-- Per IP: `API_THROTTLE_LOGIN` (`20/hour`). Malformed input is a `400` with field errors.
-
-### `POST /auth/password/reset/` — email a password-reset link (public, throttled)
-
-Also how members who joined with SMS login (and have no password) set their first one.
-
-```json
-// request
-{"email": "member@example.com"}
-// 202 — identical whether or not the address belongs to an active member (no email is sent if not)
-{"detail": "If an account uses this email address, we've sent it a link to set a new password."}
-// 429 — PASSWORD_RESET_MAX_PER_HOUR (3) requests for this address, registered or not
-{"detail": "…", "code": "password_reset_rate_limited", "retry_after": 1800}
-// 503 — email isn't configured (EMAIL_PROVIDER, DEFAULT_FROM_EMAIL, FRONTEND_URL)
-{"detail": "…", "code": "password_reset_unavailable"}
-```
-
-The emailed link is `{FRONTEND_URL}/reset-password#uid=<user public_id>&token=<token>`. The token
-comes from Django's `default_token_generator`: it expires after `PASSWORD_RESET_TIMEOUT_SECONDS`
-(3600) and stops working once the password changes (so it is single-use) or the member signs in.
-It is in the URL fragment so it never reaches server logs or `Referer` headers. Per IP:
-`API_THROTTLE_PASSWORD_RESET` (`10/hour`).
-
-### `POST /auth/password/reset/confirm/` — set the new password (public, throttled)
-
-```json
-// request
-{"uid": "<uuid>", "token": "<token>", "new_password": "…", "new_password_confirm": "…"}
-// 200
-{"detail": "Your password has been changed. You can now sign in."}
-// 400 — invalid, expired or used link
-{"detail": "This password reset link is invalid or has expired. …", "code": "reset_link_invalid"}
-// 400 — AUTH_PASSWORD_VALIDATORS failed, or the two passwords differ
-{"new_password": ["This password is too common."]}
-```
-
-On success the password is hashed with Django's hasher, `email_verified_at` is set if empty, every
-refresh token of the member is blacklisted (signed out everywhere; access tokens still expire
-within their lifetime), and a "password changed" email is sent. Per IP:
-`API_THROTTLE_PASSWORD_RESET_CONFIRM` (`20/hour`).
-
-### `POST /auth/token/` — obtain tokens (public, throttled)
-
-Any role (mobile apps, API clients). The website uses `/auth/login/` instead.
-
-```json
-// request
-{"email": "member@example.com", "password": "…"}
-// 200
-{"access": "<jwt>", "refresh": "<jwt>"}
-// 401 for wrong credentials or inactive account
-{"detail": "No active account found with the given credentials"}
-```
+Removed: `/auth/login/`, `/auth/password/reset/`, `/auth/password/reset/confirm/`,
+`/auth/email/verify/`, `/auth/email/resend/`, `/auth/email/change/` (`404`).
 
 ### `POST /auth/token/refresh/` — rotate tokens (public, throttled)
 
@@ -228,51 +221,6 @@ Reusing a refresh token that was already rotated returns `401`.
 {}
 ```
 
-### `POST /auth/otp/request/` — send an SMS login code (public, throttled)
-
-Kept for API clients; the website no longer uses SMS login (members sign in with email and
-password). Members only (`role=member`, active). Staff sign in with email and password. Indian mobile
-numbers only: `+91` followed by 10 digits starting with 6–9.
-
-```json
-// request: E.164 Indian mobile number
-{"phone_number": "+919876543210"}
-// 202 — identical whether or not the number is registered (no SMS is sent if it isn't)
-{"challenge_id": "<uuid>", "code_length": 6, "expires_in": 300, "resend_after": 60}
-// 400
-{"phone_number": ["Enter an Indian mobile number in international format, e.g. +919876543210."]}
-// 429 (also sets Retry-After)
-{"detail": "Please wait before requesting another code.", "code": "otp_rate_limited", "retry_after": 42}
-// 503 — no SMS provider configured (code "otp_unavailable") or the provider refused (code "otp_delivery_failed")
-{"detail": "…", "code": "otp_unavailable"}
-```
-
-- Per number: `OTP_RESEND_COOLDOWN_SECONDS` (60) between codes and `OTP_MAX_REQUESTS_PER_HOUR` (5).
-  Per IP: `API_THROTTLE_OTP_REQUEST` (`10/hour`).
-- A new code invalidates any earlier unused code for the number. The code is never returned.
-
-### `POST /auth/otp/verify/` — exchange the code for tokens (public, throttled)
-
-```json
-// request
-{"challenge_id": "<uuid>", "code": "123456"}
-// 200 — same token pair as /auth/token/; marks the phone number verified
-{"access": "<jwt>", "refresh": "<jwt>"}
-// 400 — `code` is one of the values below
-{"detail": "That code is incorrect.", "code": "otp_incorrect", "attempts_remaining": 4}
-```
-
-| `code` | Meaning | Can the same challenge be retried? |
-|--------|---------|------------------------------------|
-| `otp_incorrect` | Wrong code (always, for unregistered numbers) | Yes, until attempts run out |
-| `otp_expired` | Older than `OTP_TTL_SECONDS` (300) | No |
-| `otp_used` | Already used to sign in | No |
-| `otp_attempts_exceeded` | `OTP_MAX_VERIFY_ATTEMPTS` (5) wrong guesses | No |
-| `otp_invalid` | Unknown or superseded challenge, or the account changed | No |
-
-Per IP: `API_THROTTLE_OTP_VERIFY` (`20/hour`). Malformed input (`400` with field errors) is not
-counted as a guess.
-
 ### `GET /auth/me/` — current user (authenticated)
 
 ```json
@@ -283,7 +231,6 @@ counted as a guess.
   "first_name": "Anu",
   "last_name": "K",
   "role": "member",
-  "email_verified_at": null,
   "phone_verified_at": "2026-10-14T10:30:00Z",
   "date_joined": "2026-10-01T08:00:00Z"
 }
@@ -325,12 +272,13 @@ taken from the token, never from the request body. Lists are paginated (`?page=`
 |-----------------|---------|
 | `GET /dashboard/summary/` | Overview: profile status and completion, membership, interest counts, shortlist count, recent interests and notifications. All counts come from stored records. |
 | `GET /profiles/me/` · `POST` · `PATCH` | Own profile (all fields, raw choice values). `POST` creates it (`created_for`, `display_name`, `gender`, `date_of_birth` required; minimum age 18 for brides, 21 for grooms). `PATCH` updates only the fields sent. `display_name`, `gender` and `date_of_birth` can't change once submitted. |
-| `PATCH /profiles/me/partner-preference/` | Partner preferences (age and height ranges, marital statuses, religions, communities, free-text locations, education, occupation, notes). |
+| `PATCH /profiles/me/partner-preference/` | Partner preferences: age and height ranges; lists of marital statuses, religions, communities, mother tongues, diets; comma-separated locations, education, occupation; notes; `must_haves` (criterion keys `age`, `height`, `marital_status`, `religion`, `community`, `mother_tongue`, `location`, `education`, `occupation`, `diet`). Matches use the saved values on the next request. |
 | `POST /profiles/me/submit/` | Submit a complete draft (or a profile returned for changes) for staff review. `409 incomplete` lists what's missing. |
 | `GET /profiles/me/photos/` · `POST` (multipart `photo`) | Own photos with review status / upload one. JPEG, PNG or WebP, decoded and re-encoded server-side, at most `PROFILE_PHOTO_MAX_BYTES` (8 MB) and `PROFILE_MAX_PHOTOS` (10) per profile. Throttle `API_THROTTLE_PHOTO_UPLOAD`. |
 | `DELETE /profiles/me/photos/{id}/` · `POST …/primary/` | Remove a photo / make it the main photo. Another member's photo id is `404`. |
 | `GET /profiles/photo-files/{token}/` | The image file for a signed URL that expires after `PHOTO_URL_TTL_SECONDS`. Photo URLs in every response are of this form; files are never publicly listed. |
-| `GET /profiles/matches/` | Approved, visible profiles of the opposite gender matching the member's partner preferences, newest first. No compatibility scoring. |
+| `GET /profiles/highlighted/` | **Public** (no sign-in). The homepage's Highlighted Profiles: approved, visible profiles that staff highlighted in the admin (`is_highlighted`, needs the "Can highlight profiles on the homepage" permission) **and** whose member agreed to be featured (`homepage_consent`, Privacy settings). At most 12 (`?limit=` for fewer), ordered by `highlight_order`, newest approval, newest profile. Each card: `profile_code`, `given_name` (first word of the name only), `gender`, `age`, `education`, `location {city, district, state}`, `photo` (main approved photo only when the member's photos are visible to all members, else null). Uncached. |
+| `GET /profiles/matches/` | The member's matches (`apps/profiles/matching.py`): approved, visible, active profiles of the opposite gender that meet every filled-in must-have, best score first (ties: most recently approved). Each card adds `match: {score (0-100, or null with no preferences), reasons, not_stated, mutual}`; the page adds `preferences_set` and `mutual_only`. `?mutual=1` keeps only profiles whose own must-haves the member meets. Never returns the other member's preferences, contact details or date of birth. |
 | `GET /profiles/{code}/` | Another member's profile, privacy-filtered (age, never date of birth; no contact details; income only if the member chose to show it; photos per their photo privacy), plus the viewer's interest and shortlist state. Hidden/unapproved profiles are `404`. |
 | `POST /interests/` `{"profile_code"}` | Send an interest. Needs an approved own profile (`403 profile_not_active`); one per pair (`409 duplicate`); `409 reverse_exists` if they already sent you one. Members without a current paid subscription are on the Free package: `403 interest_limit_reached` once they have sent its `outgoing_interest_limit` (15) interests in total, one per member, no reset; re-sending a withdrawn interest doesn't count again. Throttle `API_THROTTLE_INTEREST_SEND`. |
 | `GET /interests/received/` · `GET /interests/sent/` (`?status=pending\|accepted\|declined\|withdrawn`) | Interests by direction. |
@@ -341,6 +289,22 @@ taken from the token, never from the request body. Lists are paginated (`?page=`
 | `GET /memberships/packages/` | Public. The available packages in display order: fee and `fee_label`, `tax_treatment` (`no_fee`, `gst_extra`, `gst_stated`), `stated_gst_rate`, `gst_amount` and `total_payable` (both `null` when GST is extra at the applicable rate), `validity_months`, `contact_view_limit`, `outgoing_interest_limit`, benefits and terms copy. Money is a decimal string. |
 | `GET /memberships/me/` | Current subscription (or `null`) with the fee, validity and contact limit stored when it was recorded, history, `entitlements` (the package in force and its interest/contact limits; Free when there is no current subscription), and `online_payment_available` (always `false` until a payment gateway is integrated). |
 | `GET /notifications/` (`?unread=1`) · `POST /notifications/{id}/read/` · `POST /notifications/read-all/` | In-app notifications, with `unread_count`. |
+
+### Membership payments (members; see docs/payments.md)
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /payments/checkout/<package>/` | Price from the package (`base`, `gst_rate`, `gst`, `total`, `currency`), the member's billing details, and `available` / `blocked {code, message}` (`payments_unavailable`, `price_not_confirmed`, `email_required`, `membership_active`, `not_purchasable`). |
+| `POST /payments/purchases/` `{"package"}` | Start or resume checkout. `201 {purchase, checkout}`; `checkout` holds the Razorpay key id, order id, amount (paise), currency and prefill. Never an amount from the client. `503 order_failed` when Razorpay refuses (nothing charged). |
+| `GET /payments/purchases/` | The member's purchases, newest first (paginated). |
+| `GET /payments/purchases/<ref>/` | One purchase; includes `checkout` while it can still be paid. Another member's reference is `404`. |
+| `POST /payments/purchases/<ref>/verify/` | Razorpay Checkout's success response. `400 invalid_payment_signature`; `202 {confirmation_pending: true}` if Razorpay can't be asked yet; otherwise the purchase as Razorpay's API confirms it. |
+| `POST /payments/purchases/<ref>/refresh/` | Ask Razorpay again ("Check payment status"). |
+| `GET /payments/receipts/<uuid>/` | A receipt of one of the member's own purchases. |
+| `POST /payments/razorpay/webhook/` | Razorpay only: `X-Razorpay-Signature` over the raw body with the webhook secret. |
+| `PATCH /auth/me/email/` `{"email"}` | The member corrects their own email address (where receipts go). |
+
+Purchase `status`: `awaiting_payment`, `authorized` (not paid), `paid`, `failed`, `needs_review`, `order_failed`.
 
 ### Development-only: `GET /schema/`, `GET /docs/`
 Available when `API_DOCS_ENABLED=True` (default in development, off in production).

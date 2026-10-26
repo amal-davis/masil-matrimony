@@ -7,16 +7,15 @@ class UserManager(BaseUserManager):
     use_in_migrations = True
 
     def _create_user(self, email, password, **extra_fields):
-        if not email:
-            raise ValueError("An email address is required.")
-        email = self.normalize_email(email).lower()
+        # Optional for members (they sign in by SMS); User.clean() requires it for staff.
+        email = self.normalize_email(email).lower() if email else None
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.full_clean(exclude=["password"])
         user.save(using=self._db)
         return user
 
-    def create_user(self, email, password=None, **extra_fields):
+    def create_user(self, email=None, password=None, **extra_fields):
         extra_fields.setdefault("role", Role.MEMBER)
         extra_fields.setdefault("is_staff", False)
         extra_fields.setdefault("is_superuser", False)
@@ -27,6 +26,8 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
 
+        if not email:
+            raise ValueError("An email address is required.")
         if extra_fields["role"] != Role.SUPER_ADMIN:
             raise ValueError("Superuser must have role=super_admin.")
         if extra_fields.get("is_staff") is not True:

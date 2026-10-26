@@ -79,3 +79,26 @@ export const ageOptions: Option[] = Array.from({ length: 80 - 18 + 1 }, (_, i) =
 export function optionLabel(options: readonly Option[], value: string | null | undefined): string {
   return options.find((option) => option.value === value)?.label ?? "";
 }
+
+/** Communities for the partner preference: those of the chosen religions, or every one when none is chosen. */
+export function communitiesForReligions(religions: readonly string[]): Option[] {
+  const chosen = religions.length ? religions : religionOptions.map((option) => option.value);
+  return chosen.flatMap((religion) => communitiesFor(religion));
+}
+
+/**
+ * Partner-preference criteria a member can make a must-have. Keys match the
+ * API's matching criteria (backend/apps/profiles/matching.py, CRITERIA).
+ */
+export const mustHaveOptions: Option[] = [
+  { value: "age", label: "Age" },
+  { value: "height", label: "Height" },
+  { value: "marital_status", label: "Marital status" },
+  { value: "religion", label: "Religion" },
+  { value: "community", label: "Community" },
+  { value: "mother_tongue", label: "Mother tongue" },
+  { value: "location", label: "Location" },
+  { value: "education", label: "Education" },
+  { value: "occupation", label: "Occupation" },
+  { value: "diet", label: "Diet" },
+];

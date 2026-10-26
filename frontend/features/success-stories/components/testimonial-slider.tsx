@@ -66,7 +66,7 @@ export function TestimonialSlider({ stories, label }: { stories: SuccessStory[];
 
   // Desktop arrows beside the track.
   const sideArrow = cn(
-    "hidden border-line hover:border-field-line disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line xl:inline-flex",
+    "hidden border-line hover:border-field-line disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line xl:row-start-1 xl:inline-flex",
     controlsVisible,
   );
   // Phone/tablet arrows floating over the photos; hidden at the ends.
@@ -83,10 +83,20 @@ export function TestimonialSlider({ stories, label }: { stories: SuccessStory[];
     >
       <div className="xl:grid xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:items-center xl:gap-6">
         {hasPages && (
-          <ArrowButton direction="prev" disabled={atStart} onClick={() => navigate(page - 1)} className={sideArrow} />
+          <ArrowButton
+            direction="prev"
+            disabled={atStart}
+            onClick={() => navigate(page - 1)}
+            className={cn(sideArrow, "xl:col-start-1")}
+          />
         )}
 
-        <div className="relative min-w-0">
+        {/*
+          Always the middle (1fr) column. The arrows only render when there is more than one page,
+          so without an explicit column a short list (1–3 stories) would auto-place into the first,
+          content-sized "auto" column and squeeze the cards into a narrow strip.
+        */}
+        <div className="relative min-w-0 xl:col-start-2 xl:row-start-1">
           <ul
             ref={trackRef}
             {...dragHandlers}
@@ -97,6 +107,8 @@ export function TestimonialSlider({ stories, label }: { stories: SuccessStory[];
               "flex snap-x snap-mandatory gap-(--gap) overflow-x-auto overscroll-x-contain scroll-smooth rounded-xl [scrollbar-width:none] motion-reduce:scroll-auto [&::-webkit-scrollbar]:hidden",
               "focus-visible:outline-wine-600",
               hasPages && "cursor-grab",
+              // Fewer stories than fit in one view: centre them instead of leaving a gap on the right.
+              measured && !hasPages && "justify-center",
               dragging && "cursor-grabbing select-none",
             )}
           >
@@ -131,7 +143,12 @@ export function TestimonialSlider({ stories, label }: { stories: SuccessStory[];
         </div>
 
         {hasPages && (
-          <ArrowButton direction="next" disabled={atEnd} onClick={() => navigate(page + 1)} className={sideArrow} />
+          <ArrowButton
+            direction="next"
+            disabled={atEnd}
+            onClick={() => navigate(page + 1)}
+            className={cn(sideArrow, "xl:col-start-3")}
+          />
         )}
       </div>
 

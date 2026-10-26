@@ -42,7 +42,7 @@ function BrandPanel() {
         </li>
         <li className="flex items-start gap-3">
           <ShieldCheckIcon className="mt-0.5 size-5 shrink-0 text-gold" />
-          Never share your password with anyone, including people who say they&apos;re from {config.siteName}.
+          Never share the code we send you by SMS with anyone, including people who say they&apos;re from {config.siteName}.
         </li>
       </ul>
     </div>

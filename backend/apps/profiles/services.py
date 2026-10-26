@@ -1,15 +1,13 @@
 """
 Profile business rules: creation, completeness, review submission, who may see
-what, photo management and match suggestions.
+what and photo management. Match suggestions are in apps.profiles.matching.
 """
-from datetime import date
-
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from .choices import Gender, PhotoStatus, PhotoVisibility, ProfileStatus
+from .choices import PhotoStatus, PhotoVisibility, ProfileStatus
 from .models import PartnerPreference, Profile, ProfilePhoto, generate_profile_code
 from .photos import process_upload
 
@@ -136,30 +134,64 @@ def has_accepted_interest(a: Profile, b: Profile) -> bool:
     ).exists()
 
 
-def visible_photos(viewer: Profile | None, profile: Profile) -> list[ProfilePhoto]:
-    """Photos `viewer` may see on `profile`: the owner sees all; others only approved ones, per privacy."""
+def accepted_partner_ids(viewer: Profile) -> set[int]:
+    """Profiles `viewer` has an accepted interest with, either way. One query, for lists of cards."""
+    from apps.interactions.models import Interest, InterestStatus
+
+    rows = Interest.objects.filter(Q(sender=viewer) | Q(receiver=viewer), status=InterestStatus.ACCEPTED).values_list(
+        "sender_id", "receiver_id"
+    )
+    return {other for pair in rows for other in pair if other != viewer.pk}
+
+
+# Lists of cards prefetch approved photos into this attribute (see approved_photos_prefetch).
+APPROVED_PHOTOS_ATTR = "approved_photos"
+
+
+def approved_photos_prefetch():
+    from django.db.models import Prefetch
+
+    return Prefetch(
+        "photos", queryset=ProfilePhoto.objects.filter(status=PhotoStatus.APPROVED), to_attr=APPROVED_PHOTOS_ATTR
+    )
+
+
+def _approved_photos(profile: Profile) -> list[ProfilePhoto]:
+    prefetched = getattr(profile, APPROVED_PHOTOS_ATTR, None)
+    return list(prefetched) if prefetched is not None else list(profile.photos.filter(status=PhotoStatus.APPROVED))
+
+
+def _accepted(viewer: Profile | None, profile: Profile, accepted_ids: set[int] | None) -> bool:
+    if viewer is None:
+        return False
+    return profile.pk in accepted_ids if accepted_ids is not None else has_accepted_interest(viewer, profile)
+
+
+def visible_photos(viewer: Profile | None, profile: Profile, accepted_ids: set[int] | None = None) -> list[ProfilePhoto]:
+    """
+    Photos `viewer` may see on `profile`: the owner sees all; others only approved ones, per privacy.
+    `accepted_ids` (accepted_partner_ids) saves a query per profile in lists.
+    """
     if viewer is not None and viewer.pk == profile.pk:
         return list(profile.photos.all())
-    if profile.photo_visibility == PhotoVisibility.ACCEPTED and not (
-        viewer is not None and has_accepted_interest(viewer, profile)
-    ):
+    if profile.photo_visibility == PhotoVisibility.ACCEPTED and not _accepted(viewer, profile, accepted_ids):
         return []
-    return list(profile.photos.filter(status=PhotoStatus.APPROVED))
+    return _approved_photos(profile)
 
 
-def photos_hidden_from(viewer: Profile | None, profile: Profile) -> bool:
+def photos_hidden_from(viewer: Profile | None, profile: Profile, accepted_ids: set[int] | None = None) -> bool:
     """True when the profile has approved photos the viewer isn't allowed to see."""
     if viewer is not None and viewer.pk == profile.pk:
         return False
     return (
         profile.photo_visibility == PhotoVisibility.ACCEPTED
-        and profile.photos.filter(status=PhotoStatus.APPROVED).exists()
-        and not (viewer is not None and has_accepted_interest(viewer, profile))
+        and bool(_approved_photos(profile))
+        and not _accepted(viewer, profile, accepted_ids)
     )
 
 
-def primary_photo(viewer: Profile | None, profile: Profile) -> ProfilePhoto | None:
-    photos = visible_photos(viewer, profile)
+def primary_photo(viewer: Profile | None, profile: Profile, accepted_ids: set[int] | None = None) -> ProfilePhoto | None:
+    photos = visible_photos(viewer, profile, accepted_ids)
     return next((photo for photo in photos if photo.is_primary), photos[0] if photos else None)
 
 
@@ -212,49 +244,3 @@ def delete_photo(profile: Profile, photo: ProfilePhoto) -> None:
                 ProfilePhoto.objects.filter(pk=replacement.pk).update(is_primary=True)
         # Delete the file only once the row is gone for good.
         transaction.on_commit(lambda: storage.delete(file_name))
-
-
-# --- Matches ---------------------------------------------------------------
-
-
-def _birth_date_bounds(age_min, age_max):
-    today = date.today()
-
-    def years_ago(years):
-        try:
-            return today.replace(year=today.year - years)
-        except ValueError:  # 29 February
-            return today.replace(year=today.year - years, day=28)
-
-    latest = years_ago(age_min) if age_min else None  # born on/before → at least age_min
-    earliest = years_ago(age_max + 1) if age_max else None  # born after → at most age_max
-    return earliest, latest
-
-
-def matches_for(profile: Profile):
-    """
-    Approved, visible profiles of the opposite gender, filtered by the member's
-    stated partner preferences (age, height, marital status, religion). No
-    scoring: the list is simply ordered by most recently approved.
-    """
-    queryset = (
-        Profile.objects.discoverable()
-        .exclude(pk=profile.pk)
-        .filter(gender=Gender.FEMALE if profile.gender == Gender.MALE else Gender.MALE)
-    )
-    pref = getattr(profile, "partner_preference", None)
-    if pref:
-        earliest, latest = _birth_date_bounds(pref.age_min, pref.age_max)
-        if earliest:
-            queryset = queryset.filter(date_of_birth__gt=earliest)
-        if latest:
-            queryset = queryset.filter(date_of_birth__lte=latest)
-        if pref.height_min_cm:
-            queryset = queryset.filter(height_cm__gte=pref.height_min_cm)
-        if pref.height_max_cm:
-            queryset = queryset.filter(height_cm__lte=pref.height_max_cm)
-        if pref.marital_statuses:
-            queryset = queryset.filter(marital_status__in=pref.marital_statuses)
-        if pref.religions:
-            queryset = queryset.filter(religion__in=pref.religions)
-    return queryset.select_related("user").order_by("-reviewed_at", "-pk")

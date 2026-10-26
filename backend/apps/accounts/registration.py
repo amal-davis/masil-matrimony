@@ -1,23 +1,28 @@
 """
-Public member registration: one request creates the account (email + password)
-and the member's draft profile. The account starts unverified: the member gets
-a verification link by email and can sign in only after opening it
-(apps.accounts.email_verification).
+Public member registration, verified by an SMS code to the mobile number.
 
-- The password goes through AUTH_PASSWORD_VALIDATORS and Django's hasher; it is
-  never stored or logged as entered. There is one password field: the website
-  offers show/hide instead of a confirmation box.
+1. RegistrationSerializer validates the details. The view refuses a mobile
+   number that already has an account (directing the visitor to log in) and an
+   email address another account uses.
+2. apps.accounts.otp.start_registration sends a code to the number and keeps the
+   details on that code's challenge. No account exists yet, so a registration
+   whose code is never entered (or never delivered) leaves nothing behind; the
+   details are deleted with the challenge by purge_otp_challenges.
+3. apps.accounts.otp.complete_registration checks the code and calls
+   create_member: the account (mobile number verified) and its draft profile are
+   created together, and the member is signed in.
+
+- Members have no password: they always sign in with a code sent to their
+  mobile number. The account gets an unusable password.
+- Email is required: payment receipts are sent to it. It isn't verified with a
+  link, and it is never used to sign in.
 - The profile details are validated by the dashboard's own CreateProfileSerializer
   (name rules, minimum age by gender), so both routes apply the same rules.
-- A taken email address gets the same answer as a new registration ("check your
-  email"), so the form doesn't reveal which addresses are registered; the
-  address's owner is emailed instead (see handle_duplicate_registration). The
-  details typed are discarded, never applied to the existing account.
-- A taken mobile number (with a new email address) is still reported on the
-  field, so people can sign in instead; the per-IP throttle
-  (API_THROTTLE_REGISTER) limits using it to probe numbers.
+- Saying that a number is taken lets people find out which numbers are
+  registered; the per-IP throttle (API_THROTTLE_REGISTER) limits that.
 """
-from django.contrib.auth.password_validation import validate_password
+from datetime import date
+
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 from rest_framework import serializers
@@ -26,20 +31,30 @@ from apps.profiles import services as profile_services
 from apps.profiles.serializers import CreateProfileSerializer
 
 from .models import User
-from .password_auth import normalize_email
+from .phone import MobileNumberField
 from .roles import Role
-from .serializers import PASSWORD_MAX_LENGTH, india_mobile_validator
 
 PROFILE_FIELDS = ("created_for", "display_name", "gender", "date_of_birth")
 
-PHONE_TAKEN = "An account already uses this mobile number. Sign in, or contact us if you need help."
+EMAIL_TAKEN = "Another account already uses this email address. Please use a different one."
+
+
+def normalize_email(email: str) -> str:
+    """The form accounts.User stores: domain and local part lower-cased (see UserManager)."""
+    return User.objects.normalize_email(email.strip()).lower()
 
 
 class RegistrationSerializer(serializers.Serializer):
-    email = serializers.EmailField(max_length=254)
-    # Not trimmed: spaces can be part of a password.
-    password = serializers.CharField(max_length=PASSWORD_MAX_LENGTH, trim_whitespace=False, write_only=True)
-    phone_number = serializers.CharField(max_length=16, validators=[india_mobile_validator])
+    phone_number = MobileNumberField()
+    # Where payment receipts go; never used to sign in.
+    email = serializers.EmailField(
+        max_length=254,
+        error_messages={
+            "required": "Enter your email address. We send your payment receipts there.",
+            "blank": "Enter your email address. We send your payment receipts there.",
+            "null": "Enter your email address. We send your payment receipts there.",
+        },
+    )
     accept_terms = serializers.BooleanField()
     created_for = serializers.CharField()
     display_name = serializers.CharField(max_length=60)
@@ -47,11 +62,14 @@ class RegistrationSerializer(serializers.Serializer):
     date_of_birth = serializers.DateField()
 
     def validate_email(self, value):
-        return normalize_email(value)
+        email = normalize_email(value)
+        if User.objects.filter(email=email).exists():
+            raise serializers.ValidationError(EMAIL_TAKEN)
+        return email
 
     def validate_accept_terms(self, value):
         if not value:
-            raise serializers.ValidationError("Please accept the Terms & Conditions and Privacy Policy.")
+            raise serializers.ValidationError("Please accept the Terms of Use and Privacy Policy.")
         return value
 
     def validate(self, attrs):
@@ -60,51 +78,72 @@ class RegistrationSerializer(serializers.Serializer):
         if not profile.is_valid():
             raise serializers.ValidationError(profile.errors)
         attrs.update(profile.validated_data)
-
-        # A registered email is handled as a duplicate by the view; only for new addresses
-        # is a taken mobile number worth reporting.
-        attrs["is_duplicate"] = User.objects.filter(email=attrs["email"]).exists()
-        if not attrs["is_duplicate"] and User.objects.filter(phone_number=attrs["phone_number"]).exists():
-            raise serializers.ValidationError({"phone_number": [PHONE_TAKEN]})
-
-        # Checked against the details being registered, e.g. a password too like the email or name.
-        candidate = User(email=attrs["email"], first_name=attrs["display_name"])
-        try:
-            validate_password(attrs["password"], candidate)
-        except DjangoValidationError as error:
-            raise serializers.ValidationError({"password": list(error.messages)})
         return attrs
 
 
-class DuplicateEmail(Exception):
-    """The email address was registered by a simultaneous request."""
+def pending_details(validated: dict) -> dict:
+    """The details kept (as JSON) on the registration's challenge until the number is verified."""
+    return {
+        "email": validated.get("email"),
+        "created_for": validated["created_for"],
+        "display_name": validated["display_name"],
+        "gender": validated["gender"],
+        "date_of_birth": validated["date_of_birth"].isoformat(),
+    }
 
 
-def register_member(data: dict) -> User:
+class DuplicateAccount(Exception):
+    """Another account already has this mobile number or email address (`field`)."""
+
+    def __init__(self, field: str):
+        self.field = field
+        super().__init__(field)
+
+
+def create_member(phone_number: str, details: dict, *, phone_verified_at) -> User:
     """
-    Create the unverified member account and draft profile from
-    RegistrationSerializer.validated_data. Raises DuplicateEmail if another
-    request took the address meanwhile.
+    Create the member account and draft profile from pending_details() once the
+    number is verified. Raises DuplicateAccount if the number or address was
+    taken in the meantime.
     """
+    email = details.get("email") or None
     names = {}
-    if data["created_for"] == "self":
-        # Account emails greet the account holder; when a parent or relative registers,
+    if details["created_for"] == "self":
+        # Account messages greet the account holder; when a parent or relative registers,
         # the profile name is someone else's, so the greeting stays generic.
-        first, _, last = data["display_name"].partition(" ")
+        first, _, last = details["display_name"].partition(" ")
         names = {"first_name": first[:150], "last_name": last[:150]}
+
+    if User.objects.filter(phone_number=phone_number).exists():
+        raise DuplicateAccount("phone_number")
+    if email and User.objects.filter(email=email).exists():
+        raise DuplicateAccount("email")
 
     try:
         with transaction.atomic():
-            user = User(email=data["email"], phone_number=data["phone_number"], role=Role.MEMBER, **names)
-            user.set_password(data["password"])
+            user = User(
+                email=email,
+                phone_number=phone_number,
+                phone_verified_at=phone_verified_at,
+                role=Role.MEMBER,
+                **names,
+            )
+            # Members sign in by SMS code only.
+            user.set_unusable_password()
             user.full_clean(exclude=["password"])
             user.save()
-            profile_services.create_profile(user, **{field: data[field] for field in PROFILE_FIELDS})
+            profile_services.create_profile(
+                user,
+                created_for=details["created_for"],
+                display_name=details["display_name"],
+                gender=details["gender"],
+                date_of_birth=date.fromisoformat(details["date_of_birth"]),
+            )
     except (IntegrityError, DjangoValidationError) as error:
-        # Another request registered the same email or number in the meantime.
-        if User.objects.filter(email=data["email"]).exists():
-            raise DuplicateEmail() from error
-        if User.objects.filter(phone_number=data["phone_number"]).exists():
-            raise serializers.ValidationError({"phone_number": [PHONE_TAKEN]}) from error
+        # Another request registered the same number or address in the meantime.
+        if User.objects.filter(phone_number=phone_number).exists():
+            raise DuplicateAccount("phone_number") from error
+        if email and User.objects.filter(email=email).exists():
+            raise DuplicateAccount("email") from error
         raise
     return user

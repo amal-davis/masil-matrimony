@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    HighlightedProfilesView,
     MatchesView,
     OwnPartnerPreferenceView,
     OwnPhotosView,
@@ -9,6 +10,7 @@ from .views import (
     OwnProfileView,
     PhotoFileView,
     ProfileDetailView,
+    ProfileSearchView,
     SubmitProfileView,
 )
 
@@ -22,6 +24,9 @@ urlpatterns = [
     path("me/photos/<uuid:photo_id>/", OwnPhotoView.as_view(), name="me-photo"),
     path("me/photos/<uuid:photo_id>/primary/", OwnPrimaryPhotoView.as_view(), name="me-photo-primary"),
     path("matches/", MatchesView.as_view(), name="matches"),
+    path("search/", ProfileSearchView.as_view(), name="search"),
+    # Before "<profile_code>/", which would otherwise match "highlighted".
+    path("highlighted/", HighlightedProfilesView.as_view(), name="highlighted"),
     path("photo-files/<str:token>/", PhotoFileView.as_view(), name="photo-file"),
     path("<str:profile_code>/", ProfileDetailView.as_view(), name="detail"),
 ]

@@ -498,7 +498,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       {/* Desktop sidebar */}
       <aside
         className={cn(
-          "sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-line bg-white transition-[width] duration-200 motion-reduce:transition-none lg:flex",
+          "sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-line bg-white transition-[width] duration-200 motion-reduce:transition-none lg:flex print:hidden",
           collapsed ? "w-[4.75rem]" : "w-64",
         )}
       >
@@ -534,7 +534,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Top bar */}
-        <header className="sticky top-0 z-30 border-b border-line bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85">
+        <header className="sticky top-0 z-30 border-b border-line bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85 print:hidden">
           <div className="flex h-16 items-center gap-2 px-3 sm:px-6 lg:px-8">
             <button
               ref={menuRef}
@@ -606,7 +606,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       {/* One-handed navigation on phones and tablets */}
       <nav
         aria-label="Dashboard shortcuts"
-        className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden print:hidden"
       >
         <ul className="grid grid-cols-5">
           {bottomNav.map((item) => {

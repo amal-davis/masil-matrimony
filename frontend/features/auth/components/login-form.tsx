@@ -1,161 +1,174 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import Link from "next/link";
+import type { CountryCode } from "libphonenumber-js";
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useState, useTransition } from "react";
-import { useForm } from "react-hook-form";
+import { useId, useState, useTransition, type ReactNode } from "react";
+import { useForm, useWatch } from "react-hook-form";
 
-import { ErrorText, errorProps } from "@/components/ui/form-field";
-import { cn } from "@/lib/utils";
+import { PhoneIcon, ShieldCheckIcon } from "@/components/ui/icons";
 
 import { DASHBOARD_PREVIEW } from "@/features/dashboard/preview-flag";
 
-import { resendVerification, signIn } from "../actions";
-import { FORGOT_PASSWORD_PATH, SIGNED_IN_COOKIE } from "../constants";
+import {
+  cancelPendingCode,
+  requestLoginCode,
+  resendLoginCode,
+  verifyLoginCode,
+  type PendingCode,
+} from "../actions";
+import { SIGNED_IN_COOKIE } from "../constants";
 import { safeRedirectPath } from "../redirect";
-import { EMAIL_MAX, loginSchema, PASSWORD_MAX, type LoginValues } from "../schema";
-import { authControl, NoticeBox, PasswordInput, primaryButton, Spinner, textLink, type Notice } from "./auth-ui";
+import { DEFAULT_SMS_COUNTRY, loginPhoneSchema, type LoginPhoneInput, type LoginPhoneValues } from "../schema";
+import { NoticeBox, primaryButton, Spinner, type Notice } from "./auth-ui";
+import { MobileNumberInput } from "./mobile-number-input";
+import { OtpStep, textButton } from "./otp-step";
+
+function StepHeading({ id, icon, title, children }: { id: string; icon: ReactNode; title: string; children: ReactNode }) {
+  return (
+    <div className="flex items-start gap-4">
+      {/* Decorative; dropped on narrow phones so the heading and text get the full width. */}
+      <span
+        aria-hidden="true"
+        className="hidden size-11 shrink-0 items-center justify-center rounded-full bg-brand-50 text-wine-600 sm:flex"
+      >
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <h2 id={id} className="text-xl font-semibold sm:text-[1.375rem]">
+          {title}
+        </h2>
+        <p className="mt-1.5 text-[0.9375rem] leading-relaxed text-pretty text-ink-muted">{children}</p>
+      </div>
+    </div>
+  );
+}
 
 /**
- * Email and password sign-in. The password goes only to a Server Action
- * (never to browser storage), and tokens never reach the browser at all.
+ * Two-step SMS sign-in: mobile number, then the one-time code. The code and
+ * tokens never touch browser storage; the challenge id stays in an HTTP-only
+ * cookie, so `initialPending` resumes the code step after a page refresh.
  */
-export function LoginForm() {
+export function LoginForm({ initialPending }: { initialPending?: PendingCode }) {
   const id = useId();
   const router = useRouter();
   const fieldId = (name: string) => `${id}-${name}`;
+  const [pending, setPending] = useState<PendingCode | undefined>(initialPending);
   const [notice, setNotice] = useState<Notice>(null);
-  // Right password, but the email isn't verified yet: offer a new link instead of the dashboard.
-  const [unverified, setUnverified] = useState(false);
-  const [pending, startTransition] = useTransition();
-
-  useEffect(() => {
-    // Arriving from a successful verification link.
-    if (new URLSearchParams(window.location.search).get("verified") === "1") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setNotice({ kind: "info", message: "Your email has been verified. Sign in to continue to your account." });
-    }
-  }, []);
-
-  const sendNewLink = () =>
-    startTransition(async () => {
-      const result = await resendVerification();
-      setNotice({ kind: result.ok ? "info" : "error", message: result.message });
-      if (result.ok) setUnverified(false);
-    });
+  const [sending, startSending] = useTransition();
 
   const {
     register,
     handleSubmit,
+    setError,
     setFocus,
     setValue,
+    getValues,
+    control,
     formState: { errors },
-  } = useForm<LoginValues>({
-    resolver: zodResolver(loginSchema),
+  } = useForm<LoginPhoneInput, unknown, LoginPhoneValues>({
+    resolver: zodResolver(loginPhoneSchema),
     mode: "onTouched",
-    defaultValues: { email: "", password: "", remember: false },
+    defaultValues: { country: DEFAULT_SMS_COUNTRY, phone: "", remember: false },
   });
+  const country = useWatch({ control, name: "country" }) as CountryCode;
 
-  const onSubmit = (values: LoginValues) => {
-    if (pending) return;
-    startTransition(async () => {
+  const next = () => new URLSearchParams(window.location.search).get("next") ?? undefined;
+
+  const onPhoneSubmit = () => {
+    if (sending) return;
+    startSending(async () => {
       setNotice(null);
-      // Only the `next` value is passed; the server checks it is a path on this site.
-      const next = new URLSearchParams(window.location.search).get("next") ?? undefined;
       if (DASHBOARD_PREVIEW) {
-        // Design preview: no account is signed in. The readable display flag only makes the
-        // site header show "My Dashboard"; it grants nothing.
+        // Design preview: nothing is sent and no account is signed in. The readable display
+        // flag only makes the site header show "My Dashboard"; it grants nothing.
         document.cookie = `${SIGNED_IN_COOKIE}=1; path=/; max-age=86400; samesite=lax`;
-        router.push(safeRedirectPath(next));
+        router.push(safeRedirectPath(next()));
         return;
       }
-      // On success the action redirects and this component unmounts.
-      const result = await signIn(values, next);
-      setUnverified(Boolean(result.unverified));
-      setNotice({ kind: "error", message: result.message });
-      setValue("password", "");
-      setFocus("password");
+      // The raw input is sent; the Server Action validates it again.
+      const result = await requestLoginCode(getValues());
+      if (!result.ok) {
+        if (result.field === "phone") {
+          setError("phone", { type: "server", message: result.message });
+          setFocus("phone");
+        } else {
+          setNotice({ kind: "error", message: result.message });
+        }
+        return;
+      }
+      setPending(result.pending);
     });
   };
 
-  const emailError = errors.email?.message;
-  const passwordError = errors.password?.message;
+  const backToNumber = (message?: string) => {
+    setPending(undefined);
+    setNotice(message ? { kind: "error", message } : null);
+    void cancelPendingCode();
+    // Put the cursor back in the number once it is visible.
+    requestAnimationFrame(() => setFocus("phone"));
+  };
+
+  if (pending) {
+    return (
+      <section aria-labelledby={fieldId("code-title")}>
+        <StepHeading id={fieldId("code-title")} icon={<ShieldCheckIcon className="size-5" />} title="Enter your code">
+          We&apos;ve sent a one-time code by SMS. If this number is registered with us, it arrives within a minute.
+        </StepHeading>
+        <div className="mt-6">
+          <OtpStep
+            pending={pending}
+            onPendingChange={setPending}
+            verify={(code) => verifyLoginCode(code, next())}
+            resend={resendLoginCode}
+            onExpired={backToNumber}
+            submitLabel="Verify & log in"
+            changeNumber={
+              <button type="button" onClick={() => backToNumber()} className={textButton}>
+                Change mobile number
+              </button>
+            }
+          />
+        </div>
+      </section>
+    );
+  }
+
+  const phoneError = errors.phone?.message;
 
   return (
-    <div>
+    <section aria-labelledby={fieldId("phone-title")}>
       {DASHBOARD_PREVIEW && (
         <p className="mb-6 rounded-md border border-accent-400 bg-accent-100 px-4 py-3 text-[0.9375rem] text-ink">
-          <strong className="font-semibold">Design preview.</strong> No real account is signed in. Enter any email
-          address and password to open the sample member dashboard.
+          <strong className="font-semibold">Design preview.</strong> No SMS is sent and no real account is signed in.
+          Enter any valid mobile number to open the sample member dashboard.
         </p>
       )}
+      <StepHeading id={fieldId("phone-title")} icon={<PhoneIcon className="size-5" />} title="Log in with your mobile number">
+        We&apos;ll send a one-time verification code to your registered mobile number by SMS.
+      </StepHeading>
 
-      <form noValidate onSubmit={handleSubmit(onSubmit)} aria-busy={pending} className="flex flex-col gap-5">
-        <div className="min-w-0">
-          <label htmlFor={fieldId("email")} className="block text-sm font-medium text-ink">
-            Email Address
-          </label>
-          <input
-            id={fieldId("email")}
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            autoCapitalize="none"
-            spellCheck={false}
-            placeholder="name@example.com"
-            maxLength={EMAIL_MAX}
-            required
-            className={cn(authControl, "mt-1.5 px-3.5")}
-            {...errorProps(fieldId("email"), emailError)}
-            {...register("email")}
-          />
-          <ErrorText id={`${fieldId("email")}-error`} message={emailError} />
-        </div>
+      <form noValidate onSubmit={handleSubmit(onPhoneSubmit)} aria-busy={sending} className="mt-6 flex flex-col gap-5">
+        <MobileNumberInput
+          id={fieldId("phone")}
+          label="Mobile number"
+          tall
+          country={country}
+          onCountryChange={(code) => setValue("country", code, { shouldValidate: Boolean(errors.phone) })}
+          error={phoneError}
+          inputProps={{ required: true, ...register("phone") }}
+        />
 
-        <div className="min-w-0">
-          <label htmlFor={fieldId("password")} className="block text-sm font-medium text-ink">
-            Password
-          </label>
-          <div className="mt-1.5">
-            <PasswordInput
-              id={fieldId("password")}
-              autoComplete="current-password"
-              maxLength={PASSWORD_MAX}
-              required
-              {...errorProps(fieldId("password"), passwordError)}
-              {...register("password")}
-            />
-          </div>
-          <ErrorText id={`${fieldId("password")}-error`} message={passwordError} />
-        </div>
-
-        <div className="-my-1 flex flex-wrap items-center justify-between gap-x-4">
-          <label className="flex min-h-12 cursor-pointer items-center gap-3 text-[0.9375rem] text-ink">
-            <input type="checkbox" className="size-5 shrink-0 accent-wine-600" {...register("remember")} />
-            Keep me signed in
-          </label>
-          <Link href={FORGOT_PASSWORD_PATH} className={cn(textLink, "-mr-1")}>
-            Forgot password?
-          </Link>
-        </div>
+        <label className="-my-1 flex min-h-12 cursor-pointer items-center gap-3 text-[0.9375rem] text-ink">
+          <input type="checkbox" className="size-5 shrink-0 accent-wine-600" {...register("remember")} />
+          Keep me signed in
+        </label>
 
         <NoticeBox notice={notice} />
 
-        {unverified && (
-          <button
-            type="button"
-            onClick={sendNewLink}
-            disabled={pending}
-            className="-mt-1 inline-flex h-13 w-full items-center justify-center rounded-md border-[1.5px] border-wine-600 bg-white px-8 text-base font-medium text-wine-600 transition-colors duration-200 hover:bg-brand-50 focus-visible:outline-wine-600 disabled:opacity-60"
-          >
-            Send a new verification link
-          </button>
-        )}
-
-        <button type="submit" disabled={pending} className={primaryButton}>
-          {pending && <Spinner />}
-          {pending ? "Signing in…" : "Sign In"}
+        <button type="submit" disabled={sending} className={primaryButton}>
+          {sending && <Spinner />}
+          {sending ? "Sending code…" : "Send code"}
         </button>
 
         <p className="-mt-1 text-sm leading-relaxed text-ink-muted">
@@ -163,6 +176,6 @@ export function LoginForm() {
           the browser.
         </p>
       </form>
-    </div>
+    </section>
   );
 }

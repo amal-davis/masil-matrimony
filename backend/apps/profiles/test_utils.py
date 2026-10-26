@@ -23,16 +23,12 @@ _counter = itertools.count(1)
 
 
 def make_user(role=Role.MEMBER, **fields):
-    """A member with a verified email unless `email_verified_at=None` is given (see email_verification)."""
+    """A member with a verified mobile number unless `phone_verified_at=None` is given (see accounts.permissions)."""
     n = next(_counter)
-    fields.setdefault("email_verified_at", timezone.now())
-    return User.objects.create_user(
-        email=f"user{n}@example.com",
-        password=PASSWORD,
-        phone_number=f"+9198{n:08d}",
-        role=role,
-        **fields,
-    )
+    fields.setdefault("phone_verified_at", timezone.now())
+    fields.setdefault("email", f"user{n}@example.com")
+    fields.setdefault("phone_number", f"+9198{n:08d}")
+    return User.objects.create_user(password=PASSWORD, role=role, **fields)
 
 
 def birth_date(age: int) -> date:

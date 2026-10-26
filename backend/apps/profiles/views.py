@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsMember
 
-from . import services
+from . import access, highlights, matching, search, services
 from .models import Profile, ProfilePhoto
 from .photos import PhotoRejected, photo_id_from_token
 from .serializers import (
@@ -21,6 +21,7 @@ from .serializers import (
     PartnerPreferenceSerializer,
     card_data,
     detail_data,
+    public_detail_data,
 )
 
 logger = logging.getLogger(__name__)
@@ -199,35 +200,142 @@ class PhotoFileView(APIView):
         return response
 
 
+class MemberOrVisitor(IsMember):
+    """Visitors who aren't signed in, and members (who must pass IsMember as everywhere else)."""
+
+    def has_permission(self, request, view):
+        return not request.user.is_authenticated or super().has_permission(request, view)
+
+
+def private_response(data, status_code=status.HTTP_200_OK) -> Response:
+    """Differs per viewer, so no shared cache (browser, proxy or CDN) may store or reuse it."""
+    response = Response(data, status=status_code)
+    response["Cache-Control"] = "private, no-store"
+    response["Vary"] = "Authorization, Cookie"
+    return response
+
+
 class ProfileDetailView(MemberAPIView):
-    """Another member's profile (or your own), privacy-filtered. Unknown or hidden profiles are 404."""
+    """
+    Another member's profile (or your own), cut to the requester's access level
+    (apps.profiles.access): a visitor's public view, a member's basic view, or the
+    full view with an eligible membership. Unknown or hidden profiles are 404 to
+    members; visitors get 401 for any profile they may not see, so a profile's
+    existence isn't revealed.
+    """
+
+    permission_classes = [MemberOrVisitor]
 
     @extend_schema(tags=["profiles"])
     def get(self, request, profile_code):
+        profile = (
+            Profile.objects.select_related("user", "partner_preference")
+            .prefetch_related(services.approved_photos_prefetch())
+            .filter(profile_code=profile_code.upper())
+            .first()
+        )
+        if not request.user.is_authenticated:
+            level = access.public_access(profile) if profile is not None else None
+            if level is None:
+                return private_response(
+                    {"detail": "Sign in to view this profile.", "code": "sign_in_required"},
+                    status.HTTP_401_UNAUTHORIZED,
+                )
+            return private_response(public_detail_data(profile, request, level))
+
         viewer = services.viewer_profile(request.user)
         if viewer is None:
             raise PermissionDenied(
                 {"detail": "Create your profile to view other members' profiles.", "code": "no_profile"}
             )
-        profile = (
-            Profile.objects.select_related("user", "partner_preference")
-            .filter(profile_code=profile_code.upper())
-            .first()
-        )
         if profile is None or not services.can_view_profile(viewer, profile):
             raise NotFound("Profile not found.")
-        return Response(detail_data(viewer, profile, request))
+        return private_response(detail_data(viewer, profile, request, access.member_access(viewer, profile)))
+
+
+class HighlightedProfilesView(APIView):
+    """
+    The homepage's Highlighted Profiles: public, read-only, at most 12
+    (apps.profiles.highlights). `?limit=` asks for fewer.
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    @extend_schema(tags=["profiles"])
+    def get(self, request):
+        try:
+            limit = int(request.query_params.get("limit", highlights.MAX_HIGHLIGHTED))
+        except ValueError:
+            limit = highlights.MAX_HIGHLIGHTED
+        return Response([highlights.public_card(item, request) for item in highlights.highlighted_profiles(limit)])
+
+
+class ProfileSearchView(MemberAPIView):
+    """
+    Search approved profiles by the filters the member chose (apps.profiles.search
+    documents the filters and who can be found). Members only, like profile pages:
+    the searcher is always the signed-in member, never chosen by the request.
+    """
+
+    @extend_schema(tags=["profiles"])
+    def get(self, request):
+        from apps.interactions.models import Shortlist
+
+        viewer = services.viewer_profile(request.user)
+        if viewer is None:
+            raise PermissionDenied({"detail": "Create your profile to search other members' profiles.", "code": "no_profile"})
+        filters = search.SearchFilters.from_query(request.query_params, context={"viewer": viewer})
+        filters.is_valid(raise_exception=True)
+        results = (
+            search.search_profiles(viewer, filters.validated_data)
+            .select_related("user")
+            .prefetch_related(services.approved_photos_prefetch())
+        )
+        shortlisted = set(Shortlist.objects.filter(owner=viewer).values_list("profile_id", flat=True))
+        accepted = services.accepted_partner_ids(viewer)
+        response = paginated(
+            self,
+            results,
+            lambda profile: {
+                **card_data(viewer, profile, request, accepted_ids=accepted),
+                "shortlisted": profile.pk in shortlisted,
+            },
+        )
+        response.data["searching_for"] = search.searchable_gender(viewer)
+        return response
 
 
 class MatchesView(MemberAPIView):
+    """
+    The member's matches from their saved partner preferences (apps.profiles.matching),
+    best first, with a 0-100 score and the reasons. `?mutual=1` keeps only mutual
+    matches. The member is always the signed-in user: nothing in the request
+    selects whose matches these are.
+    """
+
     @extend_schema(tags=["profiles"])
     def get(self, request):
         from apps.interactions.models import Shortlist
 
         profile = own_profile(request)
-        shortlisted = set(Shortlist.objects.filter(owner=profile).values_list("profile_id", flat=True))
-        return paginated(
-            self,
-            services.matches_for(profile),
-            lambda match: {**card_data(profile, match, request), "shortlisted": match.pk in shortlisted},
+        mutual_only = request.query_params.get("mutual") in ("1", "true")
+        candidates = (
+            matching.ranked_candidates(profile, mutual_only=mutual_only)
+            .select_related("user", "partner_preference")
+            .prefetch_related(services.approved_photos_prefetch())
         )
+        shortlisted = set(Shortlist.objects.filter(owner=profile).values_list("profile_id", flat=True))
+        accepted = services.accepted_partner_ids(profile)
+        response = paginated(
+            self,
+            candidates,
+            lambda match: {
+                **card_data(profile, match, request, accepted_ids=accepted),
+                "shortlisted": match.pk in shortlisted,
+                "match": matching.explain(profile, match).as_dict(),
+            },
+        )
+        response.data["preferences_set"] = matching.has_preferences(matching.preference_of(profile))
+        response.data["mutual_only"] = mutual_only
+        return response

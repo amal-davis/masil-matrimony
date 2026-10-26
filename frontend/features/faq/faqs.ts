@@ -24,7 +24,7 @@ export const faqs: Faq[] = [
     id: "register",
     question: "How do I register on Massil Matrimony?",
     answer:
-      "Use the free form at the top of our homepage: choose who the profile is for, then add a name, date of birth, mobile number, email address and a password. Your account is created straight away and you can then complete your profile from your dashboard. Our team reviews every profile before other members can see it.",
+      "Use the free form at the top of our homepage: choose who the profile is for, then add a name, date of birth and mobile number (an email address is optional). We send a verification code to your mobile by SMS; once you enter it, your account is created and you can complete your profile from your dashboard. Our team reviews every profile before other members can see it.",
   },
   {
     id: "profile-details",
@@ -72,7 +72,7 @@ export const faqs: Faq[] = [
     id: "account-help",
     question: "What should I do if I need help with my account?",
     answer:
-      "Members sign in on the login page with their email address and password. If you've forgotten your password, or used to sign in with a code sent to your mobile, choose \"Forgot password?\" to get a link by email. Never share your password with anyone, including people who claim to be from Massil Matrimony.",
+      "Members log in on the login page with their registered mobile number: we send a one-time code by SMS, and there's no password to remember. If you've changed your mobile number or the SMS doesn't arrive, please contact us. Never share your code with anyone, including people who claim to be from Massil Matrimony.",
     reviewNote: "Add the real support channel once it is decided.",
   },
   {

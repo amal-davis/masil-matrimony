@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { CHECK_EMAIL_PATH, DASHBOARD_PATH, loginUrl } from "@/features/auth/constants";
+import { DASHBOARD_PATH, loginUrl } from "@/features/auth/constants";
 import { accessToken } from "@/features/auth/session";
 import { api, ApiError } from "@/lib/api/client";
 import type { ApiErrorBody } from "@/types/api";
@@ -24,11 +24,15 @@ import type {
   DashboardSummary,
   InterestItem,
   MembershipInfo,
-  MemberCard,
+  CheckoutQuote,
+  MatchCard,
+  MatchesPage,
   NotificationItem,
   OwnPhoto,
   OwnProfile,
   Paginated,
+  Purchase,
+  ReceiptData,
   ShortlistItem,
 } from "./types";
 
@@ -52,9 +56,10 @@ export async function memberGet<T>(path: string, returnTo = DASHBOARD_PATH): Pro
     return await api.get<T>(path, { headers, cache: "no-store" });
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) redirect(loginUrl(returnTo));
-    // A session from before the member verified their email: the API refuses it until they do.
-    if (error instanceof ApiError && error.status === 403 && error.body?.code === "email_not_verified") {
-      redirect(CHECK_EMAIL_PATH);
+    // A session from before the member proved their mobile number (e.g. an old password sign-in):
+    // the API refuses it until they log in with an SMS code, which verifies the number.
+    if (error instanceof ApiError && error.status === 403 && error.body?.code === "phone_not_verified") {
+      redirect(loginUrl(returnTo));
     }
     throw error;
   }
@@ -164,10 +169,18 @@ export const getSentInterests = async (page: number, status?: string) =>
     ? previewPage(previewSent, page, status)
     : listOrNull<InterestItem>(`/interests/sent/${pageQuery(page, status ? { status } : {})}`, "/dashboard/interests/sent");
 
-export const getMatches = async (page: number) =>
+/** The member's matches, best first. `mutual` keeps only profiles whose must-haves the member also meets. */
+export const getMatches = async (page: number, mutual = false): Promise<MatchesPage | null> =>
   DASHBOARD_PREVIEW
-    ? previewPage<MemberCard>(previewMatches, page)
-    : listOrNull<MemberCard>(`/profiles/matches/${pageQuery(page)}`, "/dashboard/matches");
+    ? {
+        ...previewPage(previewMatches.filter((item) => !mutual || item.match.mutual), page),
+        preferences_set: true,
+        mutual_only: mutual,
+      }
+    : ((await listOrNull<MatchCard>(
+        `/profiles/matches/${pageQuery(page, mutual ? { mutual: "1" } : {})}`,
+        mutual ? "/dashboard/matches?mutual=1" : "/dashboard/matches",
+      )) as MatchesPage | null);
 
 export const getShortlist = async (page: number) =>
   DASHBOARD_PREVIEW
@@ -190,14 +203,58 @@ export const getNotifications = async (page: number) =>
 
 export interface AccountInfo {
   id: string;
-  email: string;
+  email: string | null;
   phone_number: string | null;
   first_name: string;
   last_name: string;
-  email_verified_at: string | null;
   phone_verified_at: string | null;
   date_joined: string;
 }
 
 export const getAccount = async () =>
   DASHBOARD_PREVIEW ? previewAccount : memberGet<AccountInfo>("/auth/me/", "/dashboard/settings");
+
+// --- Online membership purchases (no preview data: the preview never takes payments) ---
+
+const MEMBERSHIP_PATH = "/dashboard/membership";
+
+/** The backend's price and checkout availability for a package; null when the package doesn't exist. */
+export async function getCheckoutQuote(code: string): Promise<CheckoutQuote | null> {
+  if (DASHBOARD_PREVIEW || !/^[a-z]{2,16}$/.test(code)) return null;
+  try {
+    return await memberGet<CheckoutQuote>(`/payments/checkout/${code}/`, `${MEMBERSHIP_PATH}/checkout/${code}`);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+export async function getPurchase(reference: string): Promise<Purchase | null> {
+  if (DASHBOARD_PREVIEW || !/^[A-Z0-9-]{8,40}$/.test(reference)) return null;
+  try {
+    return await memberGet<Purchase>(`/payments/purchases/${reference}/`, `${MEMBERSHIP_PATH}/purchases/${reference}`);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+export const getPurchases = async (page = 1): Promise<Paginated<Purchase>> =>
+  DASHBOARD_PREVIEW
+    ? { count: 0, next: null, previous: null, results: [] }
+    : ((await listOrNull<Purchase>(`/payments/purchases/${pageQuery(page)}`, MEMBERSHIP_PATH)) ?? {
+        count: 0,
+        next: null,
+        previous: null,
+        results: [],
+      });
+
+export async function getReceipt(id: string): Promise<ReceiptData | null> {
+  if (DASHBOARD_PREVIEW || !/^[0-9a-f-]{36}$/i.test(id)) return null;
+  try {
+    return await memberGet<ReceiptData>(`/payments/receipts/${id}/`, `${MEMBERSHIP_PATH}/receipts/${id}`);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}

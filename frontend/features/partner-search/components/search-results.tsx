@@ -2,11 +2,14 @@
 
 import { useSearchParams } from "next/navigation";
 
+import { STATIC_EXPORT } from "@/features/dashboard/preview-flag";
+
 import { describeFilters, filtersFromQuery } from "../schema";
 import { PartnerSearchFilter } from "./partner-search-filter";
 
 /**
  * The search form, prefilled from the URL, and a summary of the chosen filters.
+ * The results themselves are SearchResultList, rendered by the page.
  *
  * Reads the query in the browser (useSearchParams) rather than from the page's
  * searchParams, so /search also works as a static page (the GitHub Pages
@@ -38,17 +41,13 @@ export function SearchResults() {
               </li>
             ))}
           </ul>
-          {/* No search API exists yet (planned: GET /profiles/search/). Never show sample profiles here. */}
-          <div
-            role="status"
-            className="mt-6 rounded-xl border border-accent-400 bg-accent-100 px-5 py-4 text-ink"
-          >
-            <p className="font-semibold">Profile search isn&rsquo;t available yet.</p>
-            <p className="mt-1 text-ink-muted">
-              No profiles were searched. Your filters are saved in this page&rsquo;s address, so you can bookmark
-              it and come back when search opens.
-            </p>
-          </div>
+          {/* The static preview has no API; the live site lists the results below this summary. */}
+          {STATIC_EXPORT && (
+            <div role="status" className="mt-6 rounded-xl border border-accent-400 bg-accent-100 px-5 py-4 text-ink">
+              <p className="font-semibold">This is a design preview.</p>
+              <p className="mt-1 text-ink-muted">Search results appear on the live site for signed-in members.</p>
+            </div>
+          )}
         </section>
       )}
     </>

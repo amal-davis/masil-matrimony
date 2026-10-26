@@ -51,8 +51,8 @@ jobs:
       # the API live; /auth/logout is a POST route handler; the dashboard's upload and shell-data
       # route handlers, the /dashboard/interests redirect and proxy.ts run per request;
       # robots/sitemap only matter on the real domain. The login and dashboard pages themselves
-      # stay, in preview mode (see NEXT_PUBLIC_DASHBOARD_PREVIEW below): login checks no password and
-      # opens the sample dashboard; password reset sends no email. Server Actions are replaced by stubs, since a static site
+      # stay, in preview mode (see NEXT_PUBLIC_DASHBOARD_PREVIEW below): login sends no SMS and
+      # opens the sample dashboard; registration sends nothing. Server Actions are replaced by stubs, since a static site
       # can't contain them; preview builds never call them.
       - name: Remove server-only routes from the preview
         run: |

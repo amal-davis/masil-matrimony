@@ -412,6 +412,9 @@ class VisibilityTests(TempMediaMixin, TestCase):
         self.assertEqual(response.json()["code"], "no_profile")
 
     def test_no_private_fields(self):
+        from apps.memberships.tests import subscribe
+
+        subscribe(self.viewer_user, "silver")  # the career section is part of the full view
         self.other.annual_income = "5l_10l"
         self.other.save()
         response = self.client.get(detail_url(self.other.profile_code))

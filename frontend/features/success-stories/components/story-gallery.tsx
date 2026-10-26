@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { Container } from "@/components/ui/container";
@@ -5,27 +6,39 @@ import { HeartIcon } from "@/components/ui/icons";
 
 import { getSuccessStories } from "../api";
 import type { SuccessStoriesResult } from "../types";
+import { RetryButton } from "@/components/ui/retry-button";
 import { TestimonialCard } from "./testimonial-card";
 
+const pageLink =
+  "inline-flex h-12 items-center justify-center rounded-md border border-wine-600 bg-white px-6 text-base font-medium text-wine-600 transition-colors duration-200 hover:bg-brand-50 focus-visible:outline-wine-600";
+
 /**
- * Grid of every published success story: one column on phones, two from sm and
- * three from lg. Shows an empty state when there are none (e.g. on the live
- * site until real stories are published) and an error message if loading fails.
+ * Grid of published success stories, 20 per page: one column on phones, two
+ * from sm and three from lg. Shows an empty state when there are none (e.g. on
+ * the live site until real stories are published) and an error message with a
+ * retry if loading fails. It never shows made-up stories instead.
  */
-export async function StoryGallery() {
+export async function StoryGallery({ page = 1 }: { page?: number }) {
   let result: SuccessStoriesResult;
   try {
-    result = await getSuccessStories();
+    result = await getSuccessStories(page);
   } catch (error) {
     console.error("Failed to load success stories", error);
     return (
-      <GalleryMessage>
-        We couldn&apos;t load the success stories just now. Please refresh the page or try again later.
+      <GalleryMessage action={<RetryButton />}>
+        We couldn&apos;t load the success stories just now. Please try again in a moment.
       </GalleryMessage>
     );
   }
 
   const { stories, source } = result;
+  if (stories.length === 0 && page > 1) {
+    return (
+      <GalleryMessage action={<Link href="/success-stories" className={`${pageLink} mt-6`}>Back to the first page</Link>}>
+        There are no more stories here.
+      </GalleryMessage>
+    );
+  }
   if (stories.length === 0) {
     return (
       <GalleryMessage>
@@ -61,13 +74,28 @@ export async function StoryGallery() {
             </li>
           ))}
         </ul>
+
+        {(result.hasPrevious || result.hasNext) && (
+          <nav aria-label="More stories" className="mt-10 flex flex-wrap justify-center gap-3">
+            {result.hasPrevious && (
+              <Link href={page > 2 ? `/success-stories?page=${page - 1}` : "/success-stories"} className={pageLink}>
+                Previous stories
+              </Link>
+            )}
+            {result.hasNext && (
+              <Link href={`/success-stories?page=${page + 1}`} className={pageLink}>
+                More stories
+              </Link>
+            )}
+          </nav>
+        )}
       </Container>
     </section>
   );
 }
 
 /** Empty and error states: a quiet panel in place of the grid. */
-function GalleryMessage({ children }: { children: ReactNode }) {
+function GalleryMessage({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
     <section aria-label="Success stories" className="bg-mist py-12 sm:py-16 lg:py-20">
       <Container>
@@ -76,6 +104,7 @@ function GalleryMessage({ children }: { children: ReactNode }) {
             <HeartIcon className="size-6" />
           </span>
           <p className="mt-5 text-lg leading-relaxed text-pretty text-ink-muted">{children}</p>
+          {action}
         </div>
       </Container>
     </section>

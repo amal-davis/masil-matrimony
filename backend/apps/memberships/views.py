@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsMember
 from apps.interactions.services import free_interests_used
+from apps.payments import razorpay_api
 
 from .entitlements import current_subscription, entitlements_for
 from .models import MembershipPackage, Subscription
@@ -28,8 +29,10 @@ def package_data(package: MembershipPackage) -> dict:
         "fee_label": package.fee_label,
         "tax_treatment": package.tax_treatment,
         "stated_gst_rate": money(package.stated_gst_rate),
+        # The rate the total uses (stated, or the configured applicable rate); None while unconfirmed.
+        "gst_rate": money(package.gst_rate),
         "gst_amount": money(package.gst_amount),
-        # None when it depends on the applicable GST rate, which the backend doesn't configure.
+        # None while it depends on an applicable GST rate that isn't configured (MEMBERSHIP_GST_RATE_PERCENT).
         "total_payable": money(package.total_payable),
         "validity_months": package.validity_months,
         "contact_view_limit": package.contact_view_limit,
@@ -91,9 +94,8 @@ class MyMembershipView(APIView):
                     ),
                     "contact_view_limit": entitlements.contact_view_limit,
                 },
-                # No payment gateway is integrated (apps.payments is a placeholder), so purchases are
-                # handled offline and activated by staff. Deliberately not a setting: it may only become
-                # true once server-verified payments exist.
-                "online_payment_available": False,
+                # Razorpay checkout is configured (apps.payments). Whether a given package can be
+                # bought is decided per package by GET /payments/checkout/<code>/.
+                "online_payment_available": razorpay_api.configured(),
             }
         )

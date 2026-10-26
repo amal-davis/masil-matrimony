@@ -138,6 +138,11 @@ def sidebar_navigation(request):
                 item("Packages", "sell", "admin:memberships_membershippackage_changelist", can_view_packages),
                 item("Subscriptions", "workspace_premium", "admin:memberships_subscription_changelist",
                      can_view_subscriptions, "subscriptions"),
+                item("Online purchases", "payments", "admin:payments_purchase_changelist",
+                     _can_view("payments.view_purchase")),
+                item("Receipts", "receipt_long", "admin:payments_receipt_changelist", _can_view("payments.view_receipt")),
+                item("Razorpay webhooks", "webhook", "admin:payments_webhookevent_changelist",
+                     _can_view("payments.view_webhookevent")),
             ],
         },
         {
@@ -145,6 +150,8 @@ def sidebar_navigation(request):
             "separator": True,
             "items": [
                 item("Enquiries", "mail", "admin:enquiries_enquiry_changelist", can_view_enquiries, "enquiries"),
+                item("Success stories", "favorite", "admin:website_content_successstory_changelist",
+                     _can_view("website_content.view_successstory")),
             ],
         },
         {

@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 import { COUNTRY_OPTIONS } from "../schema";
 
-type CountryOption = (typeof COUNTRY_OPTIONS)[number];
+export type CountryOption = (typeof COUNTRY_OPTIONS)[number];
 
 // Flags are static files in public/flags (see scripts/copy-flags.mjs). Plain <img> paths
 // don't get the GitHub Pages base path added automatically, so add it here.
@@ -20,12 +20,12 @@ const fold = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").toLo
 const SEARCH_KEYS = new Map(COUNTRY_OPTIONS.map((option) => [option.code, fold(option.name)]));
 
 /** Match by country name, ISO code ("ae") or calling code ("971" or "+971"). */
-function filterCountries(query: string): CountryOption[] {
+function filterCountries(options: readonly CountryOption[], query: string): readonly CountryOption[] {
   const q = fold(query.trim());
-  if (!q) return COUNTRY_OPTIONS;
+  if (!q) return options;
   const digits = q.replace(/^\+/, "");
-  if (/^\d+$/.test(digits)) return COUNTRY_OPTIONS.filter((option) => option.dialCode.slice(1).startsWith(digits));
-  return COUNTRY_OPTIONS.filter(
+  if (/^\d+$/.test(digits)) return options.filter((option) => option.dialCode.slice(1).startsWith(digits));
+  return options.filter(
     (option) => SEARCH_KEYS.get(option.code)!.includes(q) || option.code.toLowerCase() === q,
   );
 }
@@ -55,10 +55,18 @@ export function CountryCodePicker({
   value,
   onChange,
   onBlur,
+  options = COUNTRY_OPTIONS,
+  className,
+  disabled,
 }: {
   value: CountryCode;
   onChange: (code: CountryCode) => void;
   onBlur?: () => void;
+  /** The countries to offer (default: all). */
+  options?: readonly CountryOption[];
+  /** Extra classes for the button, e.g. a taller height. */
+  className?: string;
+  disabled?: boolean;
 }) {
   const id = useId();
   const listId = `${id}-list`;
@@ -69,12 +77,12 @@ export function CountryCodePicker({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
-  const selected = COUNTRY_OPTIONS.find((option) => option.code === value) ?? COUNTRY_OPTIONS[0];
-  const results = useMemo(() => filterCountries(query), [query]);
+  const selected = options.find((option) => option.code === value) ?? options[0];
+  const results = useMemo(() => filterCountries(options, query), [options, query]);
 
   const openList = () => {
     setQuery("");
-    setActive(Math.max(0, COUNTRY_OPTIONS.indexOf(selected)));
+    setActive(Math.max(0, options.indexOf(selected)));
     setOpen(true);
   };
 
@@ -147,6 +155,7 @@ export function CountryCodePicker({
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
         aria-label={`Country code: ${selected.name} ${selected.dialCode}`}
+        disabled={disabled}
         onClick={() => (open ? close(true) : openList())}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -155,8 +164,9 @@ export function CountryCodePicker({
           }
         }}
         className={cn(
-          "flex h-12 items-center gap-2 rounded-md border border-field-line bg-white pr-2.5 pl-3 text-base text-ink transition-colors hover:border-wine-600 focus-visible:border-wine-600 focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-wine-600",
+          "flex h-12 items-center gap-2 rounded-md border border-field-line bg-white pr-2.5 pl-3 text-base text-ink transition-colors hover:border-wine-600 focus-visible:border-wine-600 focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-wine-600 disabled:cursor-not-allowed disabled:opacity-60",
           open && "border-wine-600",
+          className,
         )}
       >
         <Flag code={selected.code} />

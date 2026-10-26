@@ -50,6 +50,13 @@ GROUPS = {
     ],
     # Answer enquiries and look up members.
     "Support staff": [*VIEW_ALL, "enquiries.change_enquiry"],
+    # Write, publish and unpublish success stories on the website.
+    "Content managers": [
+        "website_content.view_successstory",
+        "website_content.add_successstory",
+        "website_content.change_successstory",
+        "website_content.delete_successstory",
+    ],
 }
 
 

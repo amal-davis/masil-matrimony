@@ -1,0 +1,31 @@
+{% autoescape off %}{% if payment.test_mode %}TEST MODE: no real money was charged for this payment.
+
+{% endif %}{{ greeting }}
+
+Thank you for your payment. Your {{ item.package }} is active{% if item.starts_at %} from {{ item.starts_at|date:"j F Y" }} until {{ item.ends_at|date:"j F Y" }}{% endif %}.
+
+PAYMENT RECEIPT {{ number }}
+Date: {{ issued_at|date:"j F Y" }}
+
+Package:            {{ item.package }} ({{ item.validity_months }} months)
+Amount before GST:  Rs. {{ fmt.base }}
+GST ({{ amounts.gst_rate }}%):        Rs. {{ fmt.gst }}
+Total paid:         Rs. {{ fmt.total }} ({{ amounts.currency }})
+
+Purchase reference: {{ payment.purchase_reference }}
+Razorpay payment:   {{ payment.razorpay_payment_id }}
+Paid on:            {{ payment.paid_at|date:"j F Y, H:i" }}
+
+Billed to: {{ customer.name|default:"Member" }}, {{ customer.email }}
+{% if seller.legal_name %}
+Issued by: {{ seller.legal_name }}{% if seller.address %}, {{ seller.address }}{% endif %}{% if seller.gstin %}
+GSTIN: {{ seller.gstin }}{% endif %}{% endif %}
+
+This is a payment receipt. You can view and print it any time in your member dashboard:
+{{ receipt_url }}
+{% if seller.email or seller.phone %}
+Questions about this payment? {% if seller.email %}Email {{ seller.email }}{% endif %}{% if seller.email and seller.phone %} or call {% elif seller.phone %}Call {% endif %}{{ seller.phone }}.{% endif %}
+
+{{ site_name }}
+{{ site_url }}
+{% endautoescape %}

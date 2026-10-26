@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useId, useState, useTransition, type ReactNode } from "react";
 import { useForm, useWatch, type UseFormRegisterReturn } from "react-hook-form";
 
-import { ErrorText, errorProps, Field, SegmentedOption, Select } from "@/components/ui/form-field";
+import { controlClasses, ErrorText, errorProps, Field, SegmentedOption, Select } from "@/components/ui/form-field";
 import { SearchIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 
@@ -62,7 +62,13 @@ export function PartnerSearchFilter({
   const router = useRouter();
   const [navigating, startNavigation] = useTransition();
   const [showMore, setShowMore] = useState(
-    Boolean(initialValues?.maritalStatus || initialValues?.motherTongue),
+    Boolean(
+      initialValues?.maritalStatus ||
+        initialValues?.motherTongue ||
+        initialValues?.education ||
+        initialValues?.occupation ||
+        initialValues?.profileId,
+    ),
   );
 
   const {
@@ -79,12 +85,12 @@ export function PartnerSearchFilter({
     defaultValues: { ...emptyFilters, ...initialValues },
   });
 
-  const [religion, maritalStatus, motherTongue] = useWatch({
+  const [religion, ...more] = useWatch({
     control,
-    name: ["religion", "maritalStatus", "motherTongue"],
+    name: ["religion", "maritalStatus", "motherTongue", "education", "occupation", "profileId"],
   });
   const communities = communitiesFor(religion ?? "");
-  const moreCount = [maritalStatus, motherTongue].filter(Boolean).length;
+  const moreCount = more.filter((value) => value?.trim()).length;
 
   const onSubmit = (values: PartnerSearchValues) => {
     startNavigation(() => router.push(`${SEARCH_RESULTS_PATH}?${filtersToQuery(values)}`));
@@ -130,6 +136,27 @@ export function PartnerSearchFilter({
           <Options options={motherTongueOptions} />
         </Select>
       </Field>
+      <TextFilter
+        id={fieldId("education")}
+        label="Education"
+        placeholder="e.g. B.Tech, MBBS"
+        error={errors.education?.message}
+        field={register("education")}
+      />
+      <TextFilter
+        id={fieldId("occupation")}
+        label="Occupation"
+        placeholder="e.g. Engineer, Teacher"
+        error={errors.occupation?.message}
+        field={register("occupation")}
+      />
+      <TextFilter
+        id={fieldId("profileId")}
+        label="Matrimony ID"
+        placeholder="e.g. MM482913"
+        error={errors.profileId?.message}
+        field={register("profileId")}
+      />
     </>
   );
 
@@ -303,6 +330,36 @@ function Options({ options }: { options: readonly Option[] }) {
       {option.label}
     </option>
   ));
+}
+
+/** A free-text filter. Pressing Enter submits the search, as in any form. */
+function TextFilter({
+  id,
+  label,
+  placeholder,
+  error,
+  field,
+}: {
+  id: string;
+  label: string;
+  placeholder: string;
+  error?: string;
+  field: UseFormRegisterReturn;
+}) {
+  return (
+    <Field id={id} label={label} error={error} className={cell}>
+      <input
+        id={id}
+        type="text"
+        maxLength={60}
+        autoComplete="off"
+        placeholder={placeholder}
+        className={controlClasses}
+        {...errorProps(id, error)}
+        {...field}
+      />
+    </Field>
+  );
 }
 
 type RangeEnd = { label: string; field: UseFormRegisterReturn; error?: string };

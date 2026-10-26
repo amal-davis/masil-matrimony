@@ -1,12 +1,9 @@
 "use client";
 
-import { useState, type ComponentProps } from "react";
-
 import { controlClasses } from "@/components/ui/form-field";
-import { EyeIcon, EyeOffIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 
-/** Small building blocks shared by the sign-in, forgot-password and reset-password forms. */
+/** Small building blocks shared by the sign-in and registration forms. */
 
 export type Notice = { kind: "error" | "info"; message: string } | null;
 
@@ -64,37 +61,6 @@ export function NoticeBox({ notice, emptyOffset = "-mt-5" }: { notice: Notice; e
           </p>
         )}
       </div>
-    </div>
-  );
-}
-
-/**
- * Password field with a show/hide toggle. The toggle is a real button with a
- * fixed label and aria-pressed, so screen readers hear "Show password, toggle button".
- */
-export function PasswordInput({ className, ...props }: Omit<ComponentProps<"input">, "type">) {
-  const [visible, setVisible] = useState(false);
-  return (
-    <div className="relative">
-      <input
-        type={visible ? "text" : "password"}
-        autoCapitalize="none"
-        autoCorrect="off"
-        spellCheck={false}
-        className={cn(authControl, "pr-14", className)}
-        {...props}
-      />
-      <button
-        type="button"
-        onClick={() => setVisible((value) => !value)}
-        aria-label="Show password"
-        aria-pressed={visible}
-        aria-controls={props.id}
-        disabled={props.disabled}
-        className="absolute inset-y-0 right-0 flex w-13 items-center justify-center rounded-r-md text-ink-muted transition-colors hover:text-wine-600 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-wine-600 disabled:cursor-not-allowed"
-      >
-        {visible ? <EyeOffIcon className="size-5" /> : <EyeIcon className="size-5" />}
-      </button>
     </div>
   );
 }

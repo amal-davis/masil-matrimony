@@ -1,5 +1,5 @@
 from django.contrib.auth.models import update_last_login
-from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.generics import RetrieveAPIView
@@ -13,43 +13,33 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
-from apps.notifications.mail import delivery_mode
-
-from . import email_verification as verification
 from .otp import (
+    EmailTaken,
     OTPDeliveryFailed,
     OTPError,
     OTPRateLimited,
     OTPUnavailable,
+    PhoneRegistered,
+    RegistrationExpired,
+    complete_registration,
+    phone_number_registered,
     request_login_code,
+    resend_registration_code,
+    start_registration,
     verify_login_code,
 )
-from .password_auth import (
-    EmailNotVerified,
-    LoginRateLimited,
-    PasswordAuthError,
-    PasswordResetRateLimited,
-    PasswordResetUnavailable,
-    login_with_password,
-    request_password_reset,
-    reset_password,
-)
-from .registration import DuplicateEmail, RegistrationSerializer, register_member
+from .permissions import IsMember
+from .registration import EMAIL_TAKEN, RegistrationSerializer, pending_details
 from .serializers import (
-    ChangeUnverifiedEmailSerializer,
     CurrentUserSerializer,
-    DetailSerializer,
+    EmailUpdateSerializer,
     OTPRequestedSerializer,
     OTPRequestSerializer,
     OTPVerifySerializer,
-    PasswordLoginSerializer,
-    PasswordResetConfirmSerializer,
-    PasswordResetRequestSerializer,
-    RegistrationResultSerializer,
-    ResendVerificationSerializer,
+    RegistrationResendSerializer,
+    SafeTokenRefreshSerializer,
+    StaffTokenObtainPairSerializer,
     TokenPairSerializer,
-    VerifiedSerializer,
-    VerifyEmailSerializer,
 )
 
 
@@ -58,40 +48,30 @@ def _otp_error_response(error: OTPError) -> Response:
         http_status = status.HTTP_429_TOO_MANY_REQUESTS
     elif isinstance(error, (OTPUnavailable, OTPDeliveryFailed)):
         http_status = status.HTTP_503_SERVICE_UNAVAILABLE
-    else:
-        http_status = status.HTTP_400_BAD_REQUEST
-    return _error_response(error, http_status)
-
-
-def _password_error_response(error: PasswordAuthError) -> Response:
-    if isinstance(error, (LoginRateLimited, PasswordResetRateLimited, verification.VerificationRateLimited)):
-        http_status = status.HTTP_429_TOO_MANY_REQUESTS
-    elif isinstance(
-        error,
-        (PasswordResetUnavailable, verification.VerificationUnavailable, verification.VerificationDeliveryFailed),
-    ):
-        http_status = status.HTTP_503_SERVICE_UNAVAILABLE
-    elif isinstance(error, (EmailNotVerified, verification.EmailChangeNotAllowed)):
-        http_status = status.HTTP_403_FORBIDDEN
-    elif isinstance(error, (verification.LinkExpired, verification.AlreadyVerified)):
-        http_status = status.HTTP_410_GONE
-    elif isinstance(error, verification.EmailTaken):
+    elif isinstance(error, (PhoneRegistered, EmailTaken)):
         http_status = status.HTTP_409_CONFLICT
+    elif isinstance(error, RegistrationExpired):
+        http_status = status.HTTP_410_GONE
     else:
         http_status = status.HTTP_400_BAD_REQUEST
-    return _error_response(error, http_status)
-
-
-def _error_response(error: OTPError | PasswordAuthError, http_status: int) -> Response:
-    response = Response({"detail": error.message, "code": error.code, **error.extra}, status=http_status)
+    body = {"detail": error.message, "code": error.code, **error.extra}
+    if isinstance(error, PhoneRegistered):
+        body["phone_number"] = [error.message]
+    response = Response(body, status=http_status)
     if "retry_after" in error.extra:
         response["Retry-After"] = str(error.extra["retry_after"])
     return response
 
 
+def _token_pair(user) -> dict:
+    update_last_login(None, user)
+    refresh = RefreshToken.for_user(user)
+    return {"access": str(refresh.access_token), "refresh": str(refresh)}
+
+
 class OTPRequestView(APIView):
     """
-    Send a login code by SMS to a member's registered mobile number (E.164).
+    Send a sign-in code by SMS to a member's registered mobile number.
     The response is the same whether or not the number is registered.
     """
 
@@ -111,7 +91,7 @@ class OTPRequestView(APIView):
 
 
 class OTPVerifyView(APIView):
-    """Exchange a challenge id and the code from the SMS for an access/refresh token pair."""
+    """Exchange a sign-in challenge id and the code from the SMS for an access/refresh token pair."""
 
     authentication_classes = []
     permission_classes = [AllowAny]
@@ -125,235 +105,99 @@ class OTPVerifyView(APIView):
             user = verify_login_code(**serializer.validated_data)
         except OTPError as error:
             return _otp_error_response(error)
-
-        if verification.requires_verification(user):
-            return _password_error_response(EmailNotVerified())
-        update_last_login(None, user)
         return Response(_token_pair(user))
-
-
-def _token_pair(user) -> dict:
-    refresh = RefreshToken.for_user(user)
-    return {"access": str(refresh.access_token), "refresh": str(refresh)}
-
-
-class PasswordLoginView(APIView):
-    """
-    Website sign-in for members: exchange email + password for an access/refresh
-    token pair. Every failure gets the same generic error.
-    """
-
-    authentication_classes = []
-    permission_classes = [AllowAny]
-    throttle_scope = "login"
-
-    @extend_schema(request=PasswordLoginSerializer, responses={200: TokenPairSerializer}, tags=["auth"])
-    def post(self, request):
-        serializer = PasswordLoginSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        try:
-            user = login_with_password(request, **serializer.validated_data)
-        except PasswordAuthError as error:
-            return _password_error_response(error)
-        return Response(_token_pair(user))
-
-
-REGISTERED = (
-    "Check your email. We've sent a verification link to {email}. "
-    "Open it to verify your address, then sign in to reach your member dashboard."
-)
-REGISTERED_NOT_SENT = (
-    "Your account has been created, but we couldn't send the verification email just now. "
-    "Please request a new link in a few minutes."
-)
-REGISTERED_RATE_LIMITED = (
-    "Your account has been created, but this address has already received several emails from us "
-    "in the last hour, so we didn't send another. Please use the newest link you received, or request "
-    "a new one in about an hour."
-)
 
 
 class RegisterView(APIView):
     """
-    Create an unverified member account (email + password) and its draft
-    profile, and email a verification link. No tokens: the member signs in
-    after verifying. An address that is already registered gets the same 201
-    answer (see registration.py); `email_sent` is false only when the email for
-    a new account couldn't be handed to the mail server.
+    Start a member registration: validate the details and send a code by SMS to
+    the mobile number. No account is created until the code is verified
+    (RegisterVerifyView). A number that already has an account gets 409 with
+    code "phone_registered", so the visitor can log in instead.
     """
 
     authentication_classes = []
     permission_classes = [AllowAny]
     throttle_scope = "register"
 
-    @extend_schema(request=RegistrationSerializer, responses={201: RegistrationResultSerializer}, tags=["auth"])
+    @extend_schema(request=RegistrationSerializer, responses={202: OTPRequestedSerializer}, tags=["auth"])
     def post(self, request):
-        try:
-            # Checked first, so no account is created that could never be verified.
-            verification.ensure_email_available()
-        except verification.VerificationUnavailable as error:
-            return _password_error_response(error)
         serializer = RegistrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        outcome = None
-        if not data["is_duplicate"]:
-            try:
-                outcome = verification.complete_registration(register_member(data))
-            except DuplicateEmail:
-                pass
-        if outcome is None:
-            outcome = verification.handle_duplicate_registration(data["email"])
-        message = {"": REGISTERED, "failed": REGISTERED_NOT_SENT, "rate_limited": REGISTERED_RATE_LIMITED}
-        body = {
-            "detail": message[outcome.reason if not outcome.email_sent else ""].format(email=outcome.email),
-            "email": outcome.email,
-            "email_sent": outcome.email_sent,
-            # Why nothing was sent: "failed" or "rate_limited" ("" when sent).
-            "not_sent_reason": "" if outcome.email_sent else outcome.reason,
-            # "console" in development: the email was printed by this server, not delivered.
-            "delivery": delivery_mode(),
-        }
-        return Response(body, status=status.HTTP_201_CREATED)
-
-
-class VerifyEmailView(APIView):
-    """
-    Verify an account's email address from the token in an emailed link and sign
-    the member in: the response carries the same token pair as /auth/login/.
-    Only the request that verifies the account gets tokens; a spent, superseded
-    or expired link gets an error and no session.
-    """
-
-    authentication_classes = []
-    permission_classes = [AllowAny]
-    throttle_scope = "email_verify"
-
-    @extend_schema(request=VerifyEmailSerializer, responses={200: VerifiedSerializer}, tags=["auth"])
-    def post(self, request):
-        serializer = VerifyEmailSerializer(data=request.data)
-        if not serializer.is_valid():
-            return _password_error_response(verification.LinkInvalid())
         try:
-            user = verification.verify_token(serializer.validated_data["token"])
-        except PasswordAuthError as error:
-            return _password_error_response(error)
-        if not user.is_active:
-            # Suspended while the link was in transit: verified, but no session.
-            return Response({"detail": "Your email has been verified. Please contact us about your account."})
-        update_last_login(None, user)
-        return Response(
-            {
-                "detail": "Your email has been verified successfully. "
-                "You can now continue to your Massil Matrimony account.",
-                **_token_pair(user),
-            }
-        )
+            if phone_number_registered(data["phone_number"]):
+                raise PhoneRegistered()
+            issued = start_registration(data["phone_number"], pending_details(data))
+        except OTPError as error:
+            return _otp_error_response(error)
+        return Response(OTPRequestedSerializer(issued).data, status=status.HTTP_202_ACCEPTED)
 
 
-class ResendVerificationView(APIView):
+class RegisterResendView(APIView):
     """
-    Email a new verification link (superseding earlier ones) to an unverified
-    member. The same 202 answer whether or not the address has such an account.
+    Send a new code for a registration in progress, optionally to a corrected
+    mobile number, without sending the details again. 410 when the
+    registration has expired or was completed.
     """
 
     authentication_classes = []
     permission_classes = [AllowAny]
-    throttle_scope = "email_resend"
+    throttle_scope = "register"
 
-    @extend_schema(request=ResendVerificationSerializer, responses={202: DetailSerializer}, tags=["auth"])
+    @extend_schema(request=RegistrationResendSerializer, responses={202: OTPRequestedSerializer}, tags=["auth"])
     def post(self, request):
-        serializer = ResendVerificationSerializer(data=request.data)
+        serializer = RegistrationResendSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            verification.resend_verification(serializer.validated_data["email"])
-        except PasswordAuthError as error:
-            return _password_error_response(error)
-        return Response(
-            {
-                "detail": "If this address has an account waiting for verification, we've sent it a new link.",
-                "delivery": delivery_mode(),
-            },
-            status=status.HTTP_202_ACCEPTED,
-        )
+            issued = resend_registration_code(**serializer.validated_data)
+        except OTPError as error:
+            return _otp_error_response(error)
+        return Response(OTPRequestedSerializer(issued).data, status=status.HTTP_202_ACCEPTED)
 
 
-class ChangeUnverifiedEmailView(APIView):
+class RegisterVerifyView(APIView):
     """
-    Correct the email address of an account that isn't verified yet, proven by
-    its password, and send a verification link to the new address.
+    Check the registration code; on success create the member account (mobile
+    verified) and draft profile and return a token pair, signing the member in.
     """
 
     authentication_classes = []
     permission_classes = [AllowAny]
-    throttle_scope = "email_change"
+    throttle_scope = "otp_verify"
 
-    @extend_schema(
-        request=ChangeUnverifiedEmailSerializer, responses={202: RegistrationResultSerializer}, tags=["auth"]
-    )
+    @extend_schema(request=OTPVerifySerializer, responses={201: TokenPairSerializer}, tags=["auth"])
     def post(self, request):
-        serializer = ChangeUnverifiedEmailSerializer(data=request.data)
+        serializer = OTPVerifySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
         try:
-            user = verification.change_unverified_email(request, data["email"], data["password"], data["new_email"])
-        except PasswordAuthError as error:
-            return _password_error_response(error)
-        return Response(
-            {
-                "detail": REGISTERED.format(email=user.email),
-                "email": user.email,
-                "email_sent": True,
-                "delivery": delivery_mode(),
-            },
-            status=status.HTTP_202_ACCEPTED,
-        )
+            user = complete_registration(**serializer.validated_data)
+        except OTPError as error:
+            return _otp_error_response(error)
+        return Response(_token_pair(user), status=status.HTTP_201_CREATED)
 
 
-class PasswordResetRequestView(APIView):
+class EmailUpdateView(APIView):
     """
-    Email a password-reset link to a member. The response is the same whether
-    or not the address is registered. Also how members who joined before
-    passwords existed set their first one.
+    PATCH {"email"}: the signed-in member changes their own email address, the
+    address payment receipts go to. Only ever the requester's account. Receipts
+    already issued keep the address they were sent to.
     """
 
-    authentication_classes = []
-    permission_classes = [AllowAny]
-    throttle_scope = "password_reset"
+    permission_classes = [IsMember]
+    throttle_scope = "email_update"
 
-    @extend_schema(request=PasswordResetRequestSerializer, responses={202: DetailSerializer}, tags=["auth"])
-    def post(self, request):
-        serializer = PasswordResetRequestSerializer(data=request.data)
+    @extend_schema(request=EmailUpdateSerializer, responses={200: CurrentUserSerializer}, tags=["auth"])
+    def patch(self, request):
+        serializer = EmailUpdateSerializer(data=request.data, context={"user": request.user})
         serializer.is_valid(raise_exception=True)
+        user = request.user
+        user.email = serializer.validated_data["email"]
         try:
-            request_password_reset(serializer.validated_data["email"])
-        except PasswordAuthError as error:
-            return _password_error_response(error)
-        return Response(
-            {"detail": "If an account uses this email address, we've sent it a link to set a new password."},
-            status=status.HTTP_202_ACCEPTED,
-        )
-
-
-class PasswordResetConfirmView(APIView):
-    """Set a new password from an emailed link. Signs the member out on every device."""
-
-    authentication_classes = []
-    permission_classes = [AllowAny]
-    throttle_scope = "password_reset_confirm"
-
-    @extend_schema(request=PasswordResetConfirmSerializer, responses={200: DetailSerializer}, tags=["auth"])
-    def post(self, request):
-        serializer = PasswordResetConfirmSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-        try:
-            reset_password(data["uid"], data["token"], data["new_password"])
-        except PasswordAuthError as error:
-            return _password_error_response(error)
-        except DjangoValidationError as error:
-            return Response({"new_password": list(error.messages)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response({"detail": "Your password has been changed. You can now sign in."})
+            user.save(update_fields=["email"])
+        except IntegrityError:
+            return Response({"email": [EMAIL_TAKEN]}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(CurrentUserSerializer(user).data)
 
 
 class CurrentUserView(RetrieveAPIView):
@@ -366,16 +210,18 @@ class CurrentUserView(RetrieveAPIView):
 
 class LoginTokenView(TokenObtainPairView):
     """
-    Exchange email + password for an access/refresh token pair, for any role
-    (mobile apps and API clients). The website uses PasswordLoginView instead.
+    Exchange email + password for an access/refresh token pair, for staff API
+    clients. Members sign in with an SMS code (OTPRequestView, OTPVerifyView).
     """
 
+    serializer_class = StaffTokenObtainPairSerializer
     throttle_scope = "auth"
 
 
 class RefreshTokenView(TokenRefreshView):
     """Exchange a refresh token for a new pair; the old refresh token is blacklisted."""
 
+    serializer_class = SafeTokenRefreshSerializer
     throttle_scope = "auth"
 
 

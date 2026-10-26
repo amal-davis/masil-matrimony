@@ -152,22 +152,19 @@ REST_FRAMEWORK = {
         "auth": env.str("API_THROTTLE_AUTH", default="10/min"),
         # Public contact form, per IP address.
         "enquiries": env.str("API_THROTTLE_ENQUIRIES", default="5/hour"),
-        # SMS login, per IP address. Per-number limits are enforced separately (OTP_* below).
+        # SMS codes, per IP address. Per-number limits are enforced separately (OTP_* below).
+        # Sign-in code requests; registration starts and resends; code checks (both).
         "otp_request": env.str("API_THROTTLE_OTP_REQUEST", default="10/hour"),
-        "otp_verify": env.str("API_THROTTLE_OTP_VERIFY", default="20/hour"),
-        # Email + password sign-in and password reset, per IP address. Per-email limits
-        # are enforced separately (LOGIN_MAX_FAILURES, PASSWORD_RESET_MAX_PER_HOUR below).
-        "login": env.str("API_THROTTLE_LOGIN", default="20/hour"),
         "register": env.str("API_THROTTLE_REGISTER", default="10/hour"),
-        "password_reset": env.str("API_THROTTLE_PASSWORD_RESET", default="10/hour"),
-        "password_reset_confirm": env.str("API_THROTTLE_PASSWORD_RESET_CONFIRM", default="20/hour"),
-        "email_verify": env.str("API_THROTTLE_EMAIL_VERIFY", default="30/hour"),
-        "email_resend": env.str("API_THROTTLE_EMAIL_RESEND", default="10/hour"),
-        "email_change": env.str("API_THROTTLE_EMAIL_CHANGE", default="10/hour"),
+        "otp_verify": env.str("API_THROTTLE_OTP_VERIFY", default="20/hour"),
         # Per member.
         "photo_upload": env.str("API_THROTTLE_PHOTO_UPLOAD", default="30/hour"),
         "interest_send": env.str("API_THROTTLE_INTEREST_SEND", default="100/day"),
         "contact_view": env.str("API_THROTTLE_CONTACT_VIEW", default="60/hour"),
+        # Membership checkout (order creation, verification, status checks), per member.
+        "payments": env.str("API_THROTTLE_PAYMENTS", default="30/hour"),
+        # A member changing their own email address, per member.
+        "email_update": env.str("API_THROTTLE_EMAIL_UPDATE", default="10/hour"),
     },
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
@@ -188,9 +185,9 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
     "USER_ID_FIELD": "public_id",
     "USER_ID_CLAIM": "user_id",
-    # Active, and email-verified if a member: checked at sign-in and on every refresh,
+    # Active, and mobile-verified if a member: checked at sign-in and on every refresh,
     # so a session can't outlive a suspension or start before verification.
-    "USER_AUTHENTICATION_RULE": "apps.accounts.email_verification.user_authentication_rule",
+    "USER_AUTHENTICATION_RULE": "apps.accounts.permissions.user_authentication_rule",
 }
 
 # --------------------------------------------------------------------------
@@ -199,11 +196,28 @@ SIMPLE_JWT = {
 OTP_CODE_LENGTH = env.int("OTP_CODE_LENGTH", default=6)
 OTP_TTL_SECONDS = env.int("OTP_TTL_SECONDS", default=300)
 OTP_RESEND_COOLDOWN_SECONDS = env.int("OTP_RESEND_COOLDOWN_SECONDS", default=60)
+# Codes per mobile number (sign-in and registration together) per hour and per day.
 OTP_MAX_REQUESTS_PER_HOUR = env.int("OTP_MAX_REQUESTS_PER_HOUR", default=5)
+OTP_MAX_REQUESTS_PER_DAY = env.int("OTP_MAX_REQUESTS_PER_DAY", default=10)
+# Wrong guesses allowed per code.
 OTP_MAX_VERIFY_ATTEMPTS = env.int("OTP_MAX_VERIFY_ATTEMPTS", default=5)
+# How long after its last code a registration can still be resent (to the same or a
+# corrected number) without filling in the form again.
+OTP_REGISTRATION_WINDOW_SECONDS = env.int("OTP_REGISTRATION_WINDOW_SECONDS", default=3600)
 
 if not 4 <= OTP_CODE_LENGTH <= 10:
     raise ImproperlyConfigured("OTP_CODE_LENGTH must be between 4 and 10.")
+if OTP_TTL_SECONDS < 60 or OTP_RESEND_COOLDOWN_SECONDS < 1 or OTP_MAX_VERIFY_ATTEMPTS < 1:
+    raise ImproperlyConfigured("OTP_TTL_SECONDS (>= 60), OTP_RESEND_COOLDOWN_SECONDS and OTP_MAX_VERIFY_ATTEMPTS must be positive.")
+
+# Country calling codes (digits, no "+") whose mobile numbers may register and sign in
+# (apps/accounts/phone.py). Only list countries the SMS provider can deliver to:
+# India needs a DLT-approved template; others need MSG91's international route.
+SMS_ALLOWED_COUNTRY_CODES = [
+    code.strip().lstrip("+") for code in env.list("SMS_ALLOWED_COUNTRY_CODES", default=["91"]) if code.strip()
+]
+if not SMS_ALLOWED_COUNTRY_CODES or not all(code.isdigit() and len(code) <= 3 for code in SMS_ALLOWED_COUNTRY_CODES):
+    raise ImproperlyConfigured("SMS_ALLOWED_COUNTRY_CODES must list calling codes such as 91,971.")
 
 # "" (not configured), "msg91", or the local-only "console" / "locmem".
 SMS_PROVIDER = env.str("SMS_PROVIDER", default="").strip().lower()
@@ -213,27 +227,42 @@ MSG91_OTP_TEMPLATE_ID = env.str("MSG91_OTP_TEMPLATE_ID", default="")
 # Name of the variable that holds the code in the MSG91 template, e.g. ##otp## -> "otp".
 MSG91_OTP_VARIABLE = env.str("MSG91_OTP_VARIABLE", default="otp")
 
-# --------------------------------------------------------------------------
-# Email and password sign-in (apps/accounts/password_auth.py)
-# --------------------------------------------------------------------------
-# Failed logins per email address before it is locked for the rest of the window.
-LOGIN_MAX_FAILURES = env.int("LOGIN_MAX_FAILURES", default=10)
-LOGIN_FAILURE_WINDOW_SECONDS = env.int("LOGIN_FAILURE_WINDOW_SECONDS", default=900)
-# Password-reset emails per address per hour.
-PASSWORD_RESET_MAX_PER_HOUR = env.int("PASSWORD_RESET_MAX_PER_HOUR", default=3)
-# How long a reset link works. Links also stop working once used (the password
-# changes) or after the member signs in.
-PASSWORD_RESET_TIMEOUT = env.int("PASSWORD_RESET_TIMEOUT_SECONDS", default=3600)
 # Public URL of the website, for links in emails (e.g. https://www.example.com).
 FRONTEND_URL = env.str("FRONTEND_URL", default="").rstrip("/")
 
-# Email verification (apps/accounts/email_verification.py).
-EMAIL_VERIFICATION_TIMEOUT = env.int("EMAIL_VERIFICATION_TIMEOUT_SECONDS", default=86400)
-# Verification emails per address per hour (registration, resends and corrections together).
-EMAIL_VERIFICATION_MAX_PER_HOUR = env.int("EMAIL_VERIFICATION_MAX_PER_HOUR", default=3)
-# The business's confirmed support address, shown in account emails. Empty until confirmed:
-# emails then point to the website's contact page instead. Never invent one.
-SUPPORT_EMAIL = env.str("SUPPORT_EMAIL", default="")
+# --------------------------------------------------------------------------
+# Membership payments (apps/payments): Razorpay Orders API + Standard Checkout
+# --------------------------------------------------------------------------
+# From the Razorpay Dashboard (Account & Settings > API Keys). Only the key id ever reaches
+# the browser; the key secret and the webhook secret stay on this server.
+RAZORPAY_KEY_ID = env.str("RAZORPAY_KEY_ID", default="").strip()
+RAZORPAY_KEY_SECRET = env.str("RAZORPAY_KEY_SECRET", default="").strip()
+# The secret entered when creating the webhook (Dashboard > Webhooks). Not the API key secret.
+RAZORPAY_WEBHOOK_SECRET = env.str("RAZORPAY_WEBHOOK_SECRET", default="").strip()
+# "test" (rzp_test_ keys, no real money) or "live" (rzp_live_ keys). Must match the key id.
+RAZORPAY_MODE = env.str("RAZORPAY_MODE", default="test").strip().lower()
+RAZORPAY_TIMEOUT_SECONDS = env.int("RAZORPAY_TIMEOUT_SECONDS", default=15)
+if RAZORPAY_MODE not in ("test", "live"):
+    raise ImproperlyConfigured("RAZORPAY_MODE must be 'test' or 'live'.")
+if RAZORPAY_KEY_ID and not RAZORPAY_KEY_ID.startswith(f"rzp_{RAZORPAY_MODE}_"):
+    raise ImproperlyConfigured(f"RAZORPAY_KEY_ID must be an rzp_{RAZORPAY_MODE}_ key when RAZORPAY_MODE={RAZORPAY_MODE}.")
+
+# GST rate (percent) for packages priced "plus applicable GST" (Silver, Gold, Diamond,
+# Platinum). Empty until the business confirms it: those packages can't be bought online
+# until then. Packages whose published price states its own rate (Royal) don't use this.
+MEMBERSHIP_GST_RATE_PERCENT = env.str("MEMBERSHIP_GST_RATE_PERCENT", default="").strip()
+
+# Seller details printed on payment receipts. Never invent these: leave empty until the
+# business confirms them. Live payments are refused while the name or address is missing.
+BILLING_SELLER_NAME = env.str("BILLING_SELLER_NAME", default="").strip()
+BILLING_SELLER_ADDRESS = env.str("BILLING_SELLER_ADDRESS", default="").strip()
+BILLING_SELLER_GSTIN = env.str("BILLING_SELLER_GSTIN", default="").strip().upper()
+BILLING_CONTACT_EMAIL = env.str("BILLING_CONTACT_EMAIL", default="").strip()
+BILLING_CONTACT_PHONE = env.str("BILLING_CONTACT_PHONE", default="").strip()
+# Receipt numbers: <prefix>/<financial year>/<sequence>, e.g. MM/2026-27/000001.
+RECEIPT_NUMBER_PREFIX = env.str("RECEIPT_NUMBER_PREFIX", default="MM").strip()
+# Failed receipt emails are retried (retry_receipt_emails command, or the admin) up to this many attempts.
+RECEIPT_EMAIL_MAX_ATTEMPTS = env.int("RECEIPT_EMAIL_MAX_ATTEMPTS", default=5)
 
 # --------------------------------------------------------------------------
 # Outgoing email (apps/notifications/mail.py)
@@ -245,7 +274,7 @@ EMAIL_BACKENDS = {
     "console": "django.core.mail.backends.console.EmailBackend",
     "locmem": "django.core.mail.backends.locmem.EmailBackend",
 }
-# Unconfigured: a backend that delivers nothing. Password reset answers 503 until one is set.
+# Unconfigured: a backend that delivers nothing.
 EMAIL_BACKEND = EMAIL_BACKENDS.get(EMAIL_PROVIDER, "django.core.mail.backends.dummy.EmailBackend")
 EMAIL_HOST = env.str("EMAIL_HOST", default="")
 EMAIL_PORT = env.int("EMAIL_PORT", default=587)

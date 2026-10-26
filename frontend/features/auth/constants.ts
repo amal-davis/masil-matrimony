@@ -15,30 +15,29 @@ export const SIGNED_IN_COOKIE = "mm_signed_in";
  */
 export const REMEMBER_COOKIE = "mm_remember";
 
+/**
+ * HTTP-only cookie with the SMS code this browser is waiting for (sign-in or
+ * registration): the challenge id and what the code screen shows. It lets that
+ * screen survive a page refresh while keeping the challenge id away from browser
+ * JavaScript. It grants nothing on its own: the API needs the code from the SMS.
+ */
+export const OTP_CHALLENGE_COOKIE = "mm_otp";
+
 /** Where members land after signing in when no (safe) destination was requested. */
 export const DEFAULT_AFTER_LOGIN = "/dashboard";
 
+/** New members land on their profile, to finish it. */
+export const AFTER_REGISTER = "/dashboard/my-profile";
+
 export const LOGIN_PATH = "/login";
 
-export const FORGOT_PASSWORD_PATH = "/forgot-password";
+/** The registration form is in the homepage hero. */
+export const REGISTER_PATH = "/#register";
 
-/** Emailed reset links point here (backend/apps/accounts/password_auth.py). */
-export const RESET_PASSWORD_PATH = "/reset-password";
+/** Entering the SMS code that completes a registration. */
+export const VERIFY_MOBILE_PATH = "/verify-mobile";
 
 export const DASHBOARD_PATH = "/dashboard";
-
-/** Shown after registering, and when an unverified member signs in. */
-export const CHECK_EMAIL_PATH = "/check-email";
-
-/** Emailed verification links point here (backend/apps/accounts/email_verification.py). */
-export const VERIFY_EMAIL_PATH = "/verify-email";
-
-/**
- * HTTP-only cookie with the address waiting for verification, so the "Check your
- * email" page can show it and resend without retyping. It grants nothing: every
- * request it feeds is checked by the API.
- */
-export const PENDING_EMAIL_COOKIE = "mm_pending_email";
 
 /** The login page, returning to `path` (a path on this site) afterwards. */
 export const loginUrl = (path: string) => `${LOGIN_PATH}?next=${encodeURIComponent(path)}`;

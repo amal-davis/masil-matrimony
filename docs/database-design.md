@@ -34,7 +34,7 @@ Created by the initial migrations:
 |--------|------|-------|
 | `id` | BIGINT PK | internal only |
 | `public_id` | UUID (char(32)) | unique, exposed to clients and in JWTs |
-| `email` | varchar(254) | unique, lower-cased; login identifier |
+| `email` | varchar(254) NULL | unique, lower-cased; staff login identifier; optional contact detail for members |
 | `phone_number` | varchar(16) NULL | unique, E.164 format (e.g. `+919876543210`) |
 | `password` | varchar(128) | Django password hash, never plaintext |
 | `first_name`, `last_name` | varchar(150) | |
@@ -42,7 +42,8 @@ Created by the initial migrations:
 | `is_active` | bool | deactivation instead of deletion |
 | `is_staff` | bool | Django admin site access only |
 | `is_superuser` | bool | |
-| `email_verified_at`, `phone_verified_at` | datetime NULL | |
+| `phone_verified_at` | datetime NULL | set by a correct SMS code; required for members to sign in; cleared when the number changes |
+| `email_verified_at`, `email_verification_sent_at` | datetime NULL | historical (email verification is no longer used) |
 | `date_joined`, `last_login` | datetime | |
 
 Plus `accounts_user_groups` and `accounts_user_user_permissions` (Django permissions).
@@ -99,7 +100,7 @@ module is built.
 - **Notification**: recipient, channel (`in_app`, `email`, `sms`, `push`), template, payload,
   status, sent_at, read_at.
 - **NotificationPreference**, **DeviceToken** (mobile push).
-- **OtpChallenge**: phone/email, hashed code, purpose, expires_at, attempts, consumed_at.
+- **PhoneOTPChallenge** (implemented, `accounts`): public_id, purpose (`login`/`register`), phone_number, user (login), HMAC of the code, expires_at, failed_attempts, used_at, invalidated_at, registration (JSON details awaiting verification). **OTPNumberLock**: HMAC key per number, for serialising code requests.
 
 ### enquiries
 - **Enquiry**: name, phone, email, message, source, status, assigned_to (staff), converted_user.

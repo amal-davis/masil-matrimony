@@ -212,7 +212,7 @@ python manage.py createsuperuser
 ```
 
 You will be asked for an email and password. The account gets role `super_admin`. No default or
-hardcoded admin account exists. Accounts sign in with their **email address**; there are no usernames.
+hardcoded admin account exists. Staff accounts sign in to the admin with their **email address**; there are no usernames. Members never use a password: they log in on the website with a one-time SMS code.
 
 For a local development database only, you can create it non-interactively. The password is read from
 the environment for this one command and is never stored in the project. If the email already exists,
@@ -387,4 +387,6 @@ git push -u origin main
 | `python manage.py migrate` | You | Needs a running MySQL |
 | `python manage.py createsuperuser` | You | No default admin account exists |
 | Production env vars (hosts, origins, secrets, HTTPS) | You | Environment-specific |
-| SMS/OTP provider, payment gateway credentials | Later | Not integrated yet |
+| MSG91 account: auth key, DLT-approved OTP template, `SMS_PROVIDER=msg91` | You | Members register and log in by SMS code; without it both answer "not available" (development uses `SMS_PROVIDER=console`, codes in the API server log) |
+| Daily cron: `purge_otp_challenges`, `purge_auth_attempts` | You | Deletes expired codes and unverified registration details |
+| Razorpay keys, webhook secret, GST rate, seller details | You | See [docs/payments.md](docs/payments.md); checkout stays unavailable until keys are set |

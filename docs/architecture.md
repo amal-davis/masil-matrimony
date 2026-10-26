@@ -130,12 +130,13 @@ optional `API_INTERNAL_BASE_URL` (e.g. a private network address).
 ### Identity
 
 - Custom user model `accounts.User`, created before the first migration.
-- Login identifier: email (unique, stored lower-case) with a password. Phone number (E.164, unique,
-  optional) stays on the account as contact and profile information.
+- Members sign in with their mobile number (E.164, unique) and a one-time SMS code; they have no
+  password, and email (unique, lower-case) is optional contact information. Staff sign in to the
+  Django admin with their email address and a password (staff must have an email).
 - `public_id` (UUID) is the identifier exposed to clients and placed in tokens. The sequential
   primary key is never exposed.
-- Passwords are hashed with Django's default PBKDF2 hasher; minimum length 10 plus Django's
-  common/numeric/similarity validators.
+- Staff passwords are hashed with Django's default PBKDF2 hasher; minimum length 10 plus Django's
+  common/numeric/similarity validators. Members get an unusable password.
 
 ### Roles
 
@@ -175,8 +176,10 @@ built-in `Group`/`Permission` models, which the custom user model supports via `
 
 The browser never sees or stores tokens in JavaScript-accessible storage (no `localStorage`).
 
-1. The login form posts to a Next.js server endpoint (Route Handler or Server Action).
-2. That endpoint calls `POST /api/v1/auth/login/` server-to-server (email + password, members only).
+1. The login and registration forms call Next.js Server Actions (`frontend/features/auth/actions.ts`).
+2. They call the SMS-code endpoints server-to-server (`/auth/otp/*`, `/auth/register/*`). The
+   pending challenge id is kept in an HTTP-only cookie (`mm_otp`), so the code screen survives a
+   refresh without the id reaching browser JavaScript.
 3. It stores the access and refresh tokens in **HTTP-only, `Secure`, `SameSite=Lax`** cookies
    scoped to the website domain.
 4. Server Components and Route Handlers read the cookie and call Django with
@@ -196,45 +199,50 @@ for the Django admin and the browsable API.
 
 ### Mobile strategy
 
-Mobile apps call `/api/v1/auth/token/` directly and send `Authorization: Bearer <access>`.
+Mobile apps use the same SMS-code endpoints (`/auth/otp/request/`, `/auth/otp/verify/`) directly and send `Authorization: Bearer <access>`.
 Tokens are stored in the platform secure store (iOS Keychain, Android Keystore/EncryptedSharedPreferences),
 never in plain preferences or files. Refresh rotation and blacklisting apply identically.
 
-### Email and password sign-in (implemented for members)
+### SMS one-time-code registration and login (implemented for members)
 
-- `apps/accounts/password_auth.py`: `POST /auth/login/`, `/auth/password/reset/` and
-  `/auth/password/reset/confirm/` (docs/api-specification.md). Passwords go through
-  `django.contrib.auth.authenticate` and `set_password` (PBKDF2, `AUTH_PASSWORD_VALIDATORS`); errors
-  are generic, and requests for unknown addresses look the same as real ones.
-- Per-address limits (failed logins, reset emails) are rows in `accounts_authattempt` keyed by an
-  HMAC of the address, so they hold across API processes; per-IP limits are DRF scoped throttles.
-- Members created before passwords existed (SMS login) have no usable password. They set one with
-  "Forgot password?": the emailed link proves they control the account's address and also sets
-  `email_verified_at`. No password is ever generated for them.
-- `apps/notifications/mail.py` sends via `EMAIL_PROVIDER`: `smtp`, or `console` (development: emails,
-  including reset links, are printed by the API server) / `locmem` (tests). Production refuses the
-  last two; unset means password reset answers `503` and the website says so.
-- Website pages: `/login`, `/forgot-password`, `/reset-password` (`features/auth/`). The reset page
-  reads the token from the URL fragment, then removes it from the address bar.
-- Run `python manage.py purge_auth_attempts` daily to delete old attempt records.
+- `apps/accounts/otp.py` issues and checks codes for both purposes; `PhoneOTPChallenge` stores only
+  an HMAC of each code (keyed with `SECRET_KEY`, bound to the challenge, purpose and number). Codes
+  come from `secrets`, expire after `OTP_TTL_SECONDS`, are single-use, allow `OTP_MAX_VERIFY_ATTEMPTS`
+  wrong guesses, and a new code for a number invalidates older ones.
+- Per-number cooldown, hourly and daily caps are counted in the database (across registration and
+  login), so they hold across API processes; a per-number row lock (`OTPNumberLock`, keyed by an
+  HMAC) serialises simultaneous requests. Per-IP limits use DRF scoped throttles (local-memory
+  cache: per process until Redis is added; behind a proxy, configure DRF's `NUM_PROXIES` so client
+  IPs can't be spoofed with `X-Forwarded-For`).
+- Registration (`apps/accounts/registration.py`): the details wait on the challenge; the account
+  (mobile verified) and draft profile are created together only when the code is verified, so a
+  failed or abandoned registration leaves no account.
+- Login: unregistered numbers get the same `202` and a challenge that can never verify, so the
+  endpoint doesn't reveal who is registered. Staff accounts can't use phone login; members can't use
+  the password token endpoint.
+- Gate: members need `phone_verified_at` (`apps/accounts/permissions.py`), checked at token issue
+  and refresh and on member APIs; it is cleared when the number changes. Legacy members verify their
+  number at their first SMS login; `python manage.py mobile_login_report` lists accounts that need
+  staff help (no number, or one SMS can't reach).
+- `apps/notifications/sms.py` sends via `SMS_PROVIDER`: `msg91` (Flow API, DLT template), or
+  `console` (development, codes in the server log) / `locmem` (tests). Production refuses the last
+  two; unset means registration and login answer `503`.
+- Website pages: `/login` (number, then code), the homepage registration form, and `/verify-mobile`
+  (code, resend, change number) in `frontend/features/auth/`.
+- Run `python manage.py purge_otp_challenges` daily to delete old challenges, including the details
+  of registrations never verified.
 
-### SMS OTP login (API only)
+### Matchmaking (implemented)
 
-The website no longer offers SMS login; these endpoints remain for API clients and can be turned
-off by leaving `SMS_PROVIDER` empty (they then answer `503`).
-
-- `apps/accounts/otp.py` issues and checks codes; `PhoneOTPChallenge` stores only an HMAC of each
-  code (keyed with `SECRET_KEY`, bound to the challenge, purpose and number). Codes come from
-  `secrets`, expire after `OTP_TTL_SECONDS`, are single-use, allow `OTP_MAX_VERIFY_ATTEMPTS`
-  wrong guesses, and a new code invalidates older ones.
-- Per-number cooldown and hourly cap are counted in MySQL, so they hold across API processes;
-  per-IP limits use DRF scoped throttles (local-memory cache: per process until Redis is added).
-- Unregistered numbers get the same `202` and a challenge that can never verify, so the endpoint
-  doesn't reveal who is registered. Staff accounts can't use phone login.
-- `apps/notifications/sms.py` sends via `SMS_PROVIDER`: `msg91` (DLT template), or `console`
-  (development, codes in the server log) / `locmem` (tests). Production refuses the last two;
-  unset means SMS login answers `503`.
-- Run `python manage.py purge_otp_challenges` daily to delete old challenges.
+`apps/profiles/matching.py` decides who a member sees on Find Matches and the dashboard, computed on
+every request (no cache, no background job), so saved preferences and profile changes apply at once.
+Stage 1, database filters: discoverable (approved, visible, active owner), not the member, opposite
+gender, and every filled-in must-have (`PartnerPreference.must_haves`). Stage 2, ranking: each
+filled-in criterion has a weight (age 20, marital status 15, religion 15, location 12, community 10,
+mother tongue 8, education 8, occupation 6, height 6, diet 5); the score is the share of those points
+a profile earns, 0-100, computed in SQL for ordering and in Python for the explanation. Missing
+profile data never scores. Mutual = the member also meets the candidate's must-haves. Blocks and
+reports don't exist yet; add their exclusions to `eligible_candidates` when they do.
 
 ### Member dashboard (implemented)
 

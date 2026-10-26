@@ -1,9 +1,10 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import type { CountryCode } from "libphonenumber-js";
 import Link from "next/link";
 import { useId, useState, useTransition } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 
 import {
   controlClasses,
@@ -16,8 +17,10 @@ import {
 import { cn } from "@/lib/utils";
 
 import { registerMember, type RegisterField } from "@/features/auth/actions";
-import { NoticeBox, PasswordInput, Spinner, type Notice } from "@/features/auth/components/auth-ui";
-import { EMAIL_MAX, PASSWORD_MAX, PASSWORD_MIN } from "@/features/auth/schema";
+import { NoticeBox, Spinner, type Notice } from "@/features/auth/components/auth-ui";
+import { MobileNumberInput } from "@/features/auth/components/mobile-number-input";
+import { LOGIN_PATH } from "@/features/auth/constants";
+import { DEFAULT_SMS_COUNTRY, EMAIL_MAX } from "@/features/auth/schema";
 import { DASHBOARD_PREVIEW } from "@/features/dashboard/preview-flag";
 
 import {
@@ -37,20 +40,23 @@ const FIELD_ORDER: RegisterField[] = [
   "gender",
   "fullName",
   "dateOfBirth",
+  "country",
   "mobile",
   "email",
-  "password",
   "acceptTerms",
 ];
 
 /**
- * Registration form in the homepage hero. Creates the account (email and one
- * password, with show/hide instead of a confirmation box) and a draft profile
- * through a Server Action, signs the new member in and opens their profile to finish.
+ * Registration form in the homepage hero. A Server Action checks the details
+ * and sends a code by SMS to the mobile number, then opens the code screen
+ * (/verify-mobile); the account and draft profile are created once the code is
+ * verified. No password: members always sign in with an SMS code.
  */
 export function QuickRegistrationForm({ className }: { className?: string }) {
   const id = useId();
   const [notice, setNotice] = useState<Notice>(null);
+  // The number already has an account: offer to log in instead.
+  const [phoneRegistered, setPhoneRegistered] = useState(false);
   const [pending, startTransition] = useTransition();
   const {
     register,
@@ -59,23 +65,27 @@ export function QuickRegistrationForm({ className }: { className?: string }) {
     setError,
     setFocus,
     getValues,
+    control,
     formState: { errors, isSubmitted },
   } = useForm<QuickRegistrationInput, unknown, QuickRegistrationValues>({
     resolver: zodResolver(quickRegistrationSchema),
     mode: "onTouched",
-    defaultValues: { fullName: "", mobile: "", dateOfBirth: "", email: "", password: "" },
+    defaultValues: { fullName: "", country: DEFAULT_SMS_COUNTRY, mobile: "", dateOfBirth: "", email: "" },
   });
+  const country = useWatch({ control, name: "country" }) as CountryCode;
 
   const onSubmit = () => {
     if (pending) return;
     startTransition(async () => {
       setNotice(null);
+      setPhoneRegistered(false);
       if (DASHBOARD_PREVIEW) {
         setNotice({ kind: "error", message: "Design preview: registration isn't available, and nothing was saved." });
         return;
       }
-      // The raw input is sent; the Server Action validates it again. On success it redirects to /check-email.
+      // The raw input is sent; the Server Action validates it again. On success it redirects to /verify-mobile.
       const result = await registerMember(getValues());
+      setPhoneRegistered(Boolean(result.phoneRegistered));
       const fieldErrors = result.fieldErrors ?? {};
       for (const field of FIELD_ORDER) {
         const message = fieldErrors[field];
@@ -163,7 +173,8 @@ export function QuickRegistrationForm({ className }: { className?: string }) {
           />
         </Field>
 
-        <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
+        {/* A date needs only half the row; the mobile number below gets the full width for its country picker. */}
+        <div className="sm:w-1/2 sm:pr-2">
           <Field id={fieldId("dateOfBirth")} label="Date of birth" error={errors.dateOfBirth?.message}>
             <input
               id={fieldId("dateOfBirth")}
@@ -174,76 +185,40 @@ export function QuickRegistrationForm({ className }: { className?: string }) {
               {...register("dateOfBirth")}
             />
           </Field>
-
-          <Field id={fieldId("mobile")} label="Mobile number" error={errors.mobile?.message}>
-            <div className="flex min-w-0">
-              <span
-                aria-hidden="true"
-                className="inline-flex h-12 shrink-0 items-center rounded-l-md border border-r-0 border-field-line bg-surface-muted px-3 text-base text-ink-muted"
-              >
-                +91
-              </span>
-              <input
-                id={fieldId("mobile")}
-                type="tel"
-                inputMode="numeric"
-                autoComplete="tel-national"
-                maxLength={12}
-                className={cn(controlClasses, "rounded-l-none")}
-                aria-invalid={errors.mobile ? true : undefined}
-                aria-describedby={cn(
-                  `${fieldId("mobile")}-hint`,
-                  errors.mobile && `${fieldId("mobile")}-error`,
-                )}
-                {...register("mobile")}
-              />
-            </div>
-            <span id={`${fieldId("mobile")}-hint`} className="sr-only">
-              Indian mobile number, 10 digits, country code +91
-            </span>
-          </Field>
         </div>
 
-        <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
-          <Field id={fieldId("email")} label="Email address" error={errors.email?.message}>
-            <input
-              id={fieldId("email")}
-              type="email"
-              inputMode="email"
-              autoComplete="email"
-              autoCapitalize="none"
-              spellCheck={false}
-              maxLength={EMAIL_MAX}
-              className={controlClasses}
-              {...errorProps(fieldId("email"), errors.email?.message)}
-              {...register("email")}
-            />
-          </Field>
-
-          <div className="min-w-0">
-            <label htmlFor={fieldId("password")} className="block text-sm font-medium text-ink">
-              Password
-            </label>
-            <div className="mt-1.5">
-              <PasswordInput
-                id={fieldId("password")}
-                autoComplete="new-password"
-                maxLength={PASSWORD_MAX}
-                className="h-12"
-                aria-invalid={errors.password ? true : undefined}
-                aria-describedby={cn(
-                  `${fieldId("password")}-hint`,
-                  errors.password && `${fieldId("password")}-error`,
-                )}
-                {...register("password")}
-              />
-            </div>
-            <ErrorText id={`${fieldId("password")}-error`} message={errors.password?.message} />
-            <p id={`${fieldId("password")}-hint`} className="mt-1.5 text-sm text-ink-muted">
-              At least {PASSWORD_MIN} characters.
+        <div>
+          <MobileNumberInput
+            id={fieldId("mobile")}
+            country={country}
+            onCountryChange={(code) => setValue("country", code, { shouldValidate: isSubmitted })}
+            error={errors.mobile?.message}
+            hint="We'll send a verification code to this number by SMS. You'll use it to log in."
+            inputProps={register("mobile")}
+          />
+          {phoneRegistered && (
+            <p className="mt-1.5 text-sm">
+              <Link href={LOGIN_PATH} className="font-medium text-wine-600 underline underline-offset-2">
+                Log in with this number
+              </Link>
             </p>
-          </div>
+          )}
         </div>
+
+        <Field id={fieldId("email")} label="Email address" error={errors.email?.message}>
+          <input
+            id={fieldId("email")}
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            autoCapitalize="none"
+            spellCheck={false}
+            maxLength={EMAIL_MAX}
+            className={controlClasses}
+            {...errorProps(fieldId("email"), errors.email?.message)}
+            {...register("email")}
+          />
+        </Field>
 
         <div>
           <label className="flex items-start gap-3 text-sm text-ink-muted">
@@ -276,10 +251,10 @@ export function QuickRegistrationForm({ className }: { className?: string }) {
           className="inline-flex h-13 items-center justify-center gap-2.5 rounded-md bg-wine-600 px-6 text-base font-medium text-white transition-colors duration-200 hover:bg-wine-800 focus-visible:outline-wine-600 disabled:cursor-wait disabled:opacity-60"
         >
           {pending && <Spinner />}
-          {pending ? "Creating your account…" : "Register free"}
+          {pending ? "Sending verification code…" : "Register free"}
         </button>
         <p className="-mt-2 text-sm leading-relaxed text-ink-muted">
-          We&apos;ll email you a link to verify your address. You can sign in once it&apos;s verified.
+          Next, enter the code we send to your mobile. Your account is created once it&apos;s verified.
         </p>
 
       </form>

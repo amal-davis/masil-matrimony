@@ -28,7 +28,7 @@ import {
 } from "@/features/dashboard/components/ui";
 import { formatDate, interestStatusFor, profileStatus, subscriptionStatus } from "@/features/dashboard/format";
 import { getDashboardSummary, getMatches } from "@/features/dashboard/server-api";
-import type { DashboardSummary, MemberCard } from "@/features/dashboard/types";
+import type { DashboardSummary } from "@/features/dashboard/types";
 
 export const metadata: Metadata = { title: "Overview" };
 
@@ -97,7 +97,8 @@ export default async function DashboardOverviewPage() {
   }
 
   const matches = profile.status === "active" ? await getMatches(1) : null;
-  const recommended = (matches?.results.slice(0, 4) ?? []) as (MemberCard & { shortlisted: boolean })[];
+  // The API's best matches; never padded with other profiles.
+  const recommended = matches?.results.slice(0, 4) ?? [];
   const step = nextStep(profile, summary);
   const status = profileStatus[profile.status];
 
@@ -229,12 +230,16 @@ export default async function DashboardOverviewPage() {
             <Card
               title="Recommended for you"
               titleId="recommended-title"
-              description="Approved profiles that fit your partner preferences."
+              description={
+                matches && !matches.preferences_set
+                  ? "Newest approved profiles. Add partner preferences to see your best matches."
+                  : "Your best matches from your partner preferences. The score shows how many of your preferences each profile meets."
+              }
               actions={<Link href="/dashboard/matches" className={quietButton}>See all matches</Link>}
             >
               {recommended.length === 0 ? (
                 <p className="py-4 text-center text-[0.9375rem] text-ink-muted">
-                  No profiles fit your preferences right now.{" "}
+                  No approved profile meets your must-haves right now.{" "}
                   <Link href="/dashboard/my-profile#preferences" className="font-medium text-wine-600 underline underline-offset-4">
                     Review your preferences
                   </Link>

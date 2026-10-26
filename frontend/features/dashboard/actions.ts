@@ -3,7 +3,7 @@
 import { refresh } from "next/cache";
 
 import { memberMutate, type MutationResult } from "./server-api";
-import type { ContactStatus, InterestItem, OwnPhoto, OwnProfile, PartnerPreference } from "./types";
+import type { CheckoutOptions, ContactStatus, InterestItem, OwnPhoto, OwnProfile, PartnerPreference, Purchase } from "./types";
 
 /**
  * Dashboard mutations. Each one calls the member API as the signed-in member
@@ -107,4 +107,59 @@ export async function markNotificationRead(notificationId: string) {
 
 export async function markAllNotificationsRead() {
   return andRefresh(memberMutate<null>("post", "/notifications/read-all/", undefined, "/dashboard/notifications"));
+}
+
+// --- Membership purchases (backend/apps/payments) ---------------------------
+// Only a package code goes to the API: it sets the price. The membership is
+// activated only by the API after Razorpay confirms the payment.
+
+const PACKAGE_CODE = /^[a-z]{2,16}$/;
+const PURCHASE_REFERENCE = /^[A-Z0-9-]{8,40}$/;
+const RAZORPAY_ID = /^[A-Za-z0-9_]{6,40}$/;
+const SIGNATURE = /^[0-9a-f]{64}$/i;
+
+/** Start (or resume) checkout for a package: the purchase and the options for Razorpay Checkout. */
+export async function startPurchase(packageCode: string) {
+  if (!PACKAGE_CODE.test(packageCode)) return invalid;
+  return memberMutate<{ purchase: Purchase; checkout: CheckoutOptions }>(
+    "post", "/payments/purchases/", { package: packageCode }, "/dashboard/membership",
+  );
+}
+
+/** Pass Razorpay Checkout's success response to the API, which verifies it and asks Razorpay. */
+export async function verifyPayment(
+  reference: string,
+  response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string },
+) {
+  if (
+    !PURCHASE_REFERENCE.test(reference) ||
+    !RAZORPAY_ID.test(response?.razorpay_order_id ?? "") ||
+    !RAZORPAY_ID.test(response?.razorpay_payment_id ?? "") ||
+    !SIGNATURE.test(response?.razorpay_signature ?? "")
+  ) {
+    return invalid;
+  }
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = response;
+  return andRefresh(
+    memberMutate<Purchase>(
+      "post",
+      `/payments/purchases/${reference}/verify/`,
+      { razorpay_order_id, razorpay_payment_id, razorpay_signature },
+      `/dashboard/membership/purchases/${reference}`,
+    ),
+  );
+}
+
+/** "Check payment status": the API asks Razorpay about the order again. */
+export async function refreshPaymentStatus(reference: string) {
+  if (!PURCHASE_REFERENCE.test(reference)) return invalid;
+  return andRefresh(
+    memberMutate<Purchase>("post", `/payments/purchases/${reference}/refresh/`, undefined, `/dashboard/membership/purchases/${reference}`),
+  );
+}
+
+/** The member corrects their own email address (where receipts go). */
+export async function updateEmail(email: string) {
+  if (typeof email !== "string" || email.length > 254) return invalid;
+  return andRefresh(memberMutate<{ email: string }>("patch", "/auth/me/email/", { email: email.trim() }, "/dashboard/settings"));
 }

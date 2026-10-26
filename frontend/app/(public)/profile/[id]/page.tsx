@@ -6,11 +6,12 @@ import { Suspense, type ReactNode } from "react";
 import { Container } from "@/components/ui/container";
 import { InfoIcon, LockIcon, MapPinIcon, UsersIcon, VerifiedIcon } from "@/components/ui/icons";
 import { loginUrl } from "@/features/auth/constants";
-import type { MemberProfileDetail } from "@/features/dashboard/types";
+import type { MemberProfileDetail, ProfileAccess } from "@/features/dashboard/types";
 import { getPrerenderedProfileCodes, getProfile, normaliseProfileCode } from "@/features/profiles/api";
 import { getMemberProfile } from "@/features/profiles/member-api";
 import type { ProfileDetail } from "@/features/profiles/types";
 import { BriefcaseIcon, GraduationCapIcon, LanguageIcon } from "@/features/profiles/components/icons";
+import { AccessPrompt } from "@/features/profiles/components/access-prompt";
 import { ProfileActions } from "@/features/profiles/components/profile-actions";
 import { ProfileGallery } from "@/features/profiles/components/profile-gallery";
 import {
@@ -69,14 +70,15 @@ async function ProfileContent({ params }: { params: Promise<{ id: string }> }) {
   const result = await getMemberProfile(id);
   switch (result.kind) {
     case "found":
-      return <ProfileView profile={result.profile} isSample={false} viewer={result.viewer} />;
+      return <ProfileView profile={result.profile} isSample={false} viewer={result.viewer} access={result.access} />;
     case "signed_out":
       return (
         <ProfileGate
           title="Sign in to view this profile"
           action={{ href: loginUrl(profilePath(normaliseProfileCode(id))), label: "Sign in" }}
         >
-          Member profiles are visible only to registered members, to protect their privacy.
+          Member profiles are visible only to registered members, to protect their privacy. Sign in or register free
+          to see the basic details; a membership unlocks the full profile.
         </ProfileGate>
       );
     case "no_profile":
@@ -140,11 +142,15 @@ function ProfileView({
   profile,
   isSample,
   viewer,
+  access,
 }: {
   profile: ProfileDetail;
   isSample: boolean;
   viewer?: MemberProfileDetail["viewer"];
+  /** Omitted for sample profiles, which always show everything. */
+  access?: ProfileAccess;
 }) {
+  const full = isSample || access?.level === "full";
   const path = profilePath(profile.profileCode);
   const summary = [
     `${profile.age} years`,
@@ -237,9 +243,11 @@ function ProfileView({
                   {faith}
                 </Fact>
               )}
-              <Fact icon={<GraduationCapIcon className="size-5" />} label="Education">
-                {profile.education}
-              </Fact>
+              {profile.education && (
+                <Fact icon={<GraduationCapIcon className="size-5" />} label="Education">
+                  {profile.education}
+                </Fact>
+              )}
               {(profile.career?.profession ?? profile.profession) && (
                 <Fact icon={<BriefcaseIcon className="size-5" />} label="Profession">
                   {profile.career?.profession ?? profile.profession}
@@ -267,45 +275,49 @@ function ProfileView({
           </div>
         </section>
 
-        {/* Biodata: two columns of cards from lg, one column before. */}
-        <div className="mt-6 grid gap-6 lg:grid-cols-2">
-          <ProfileSection id="about" title="About Me" className="lg:col-span-2">
-            <p className="max-w-[72ch] text-base leading-relaxed text-pretty whitespace-pre-line text-ink sm:text-[1.0625rem]">
-              {profile.about?.trim() || "This member has not added an introduction yet."}
-            </p>
-          </ProfileSection>
+        {!full && access && <AccessPrompt access={access} name={profile.displayName} path={path} />}
 
-          <ProfileSection id="personal" title="Personal Details">
-            <DetailList items={personalDetails(profile)} />
-          </ProfileSection>
-
-          <ProfileSection id="career" title="Education & Career">
-            <DetailList items={career} />
-          </ProfileSection>
-
-          {hasDetails(family) && (
-            <ProfileSection id="family" title="Family Background">
-              <DetailList items={family} />
+        {/* Biodata: two columns of cards from lg, one column before. Only sent by the API with full access. */}
+        {full && (
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            <ProfileSection id="about" title="About Me" className="lg:col-span-2">
+              <p className="max-w-[72ch] text-base leading-relaxed text-pretty whitespace-pre-line text-ink sm:text-[1.0625rem]">
+                {profile.about?.trim() || "This member has not added an introduction yet."}
+              </p>
             </ProfileSection>
-          )}
 
-          {profile.lifestyle && hasLifestyle(profile) && (
-            <ProfileSection id="lifestyle" title="Lifestyle & Interests">
-              <Lifestyle lifestyle={profile.lifestyle} />
+            <ProfileSection id="personal" title="Personal Details">
+              <DetailList items={personalDetails(profile)} />
             </ProfileSection>
-          )}
 
-          {(hasDetails(partner) || profile.partnerPreferences?.notes) && (
-            <ProfileSection id="partner" title="Partner Preferences" className="lg:col-span-2">
-              <DetailList items={partner} className="lg:grid-cols-3" />
-              {profile.partnerPreferences?.notes && (
-                <p className="mt-5 max-w-[72ch] text-base leading-relaxed text-ink">
-                  {profile.partnerPreferences.notes}
-                </p>
-              )}
+            <ProfileSection id="career" title="Education & Career">
+              <DetailList items={career} />
             </ProfileSection>
-          )}
-        </div>
+
+            {hasDetails(family) && (
+              <ProfileSection id="family" title="Family Background">
+                <DetailList items={family} />
+              </ProfileSection>
+            )}
+
+            {profile.lifestyle && hasLifestyle(profile) && (
+              <ProfileSection id="lifestyle" title="Lifestyle & Interests">
+                <Lifestyle lifestyle={profile.lifestyle} />
+              </ProfileSection>
+            )}
+
+            {(hasDetails(partner) || profile.partnerPreferences?.notes) && (
+              <ProfileSection id="partner" title="Partner Preferences" className="lg:col-span-2">
+                <DetailList items={partner} className="lg:grid-cols-3" />
+                {profile.partnerPreferences?.notes && (
+                  <p className="mt-5 max-w-[72ch] text-base leading-relaxed text-ink">
+                    {profile.partnerPreferences.notes}
+                  </p>
+                )}
+              </ProfileSection>
+            )}
+          </div>
+        )}
       </Container>
     </div>
   );

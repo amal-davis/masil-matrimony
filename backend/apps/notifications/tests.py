@@ -50,6 +50,30 @@ class Msg91Tests(SimpleTestCase):
             with self.assertRaises(sms.SMSError):
                 sms.send_otp_sms(PHONE, "123456")
 
+    def test_http_errors_report_status_and_reason_but_never_the_key_or_code(self):
+        import io
+        import urllib.error
+
+        for status, payload in ((401, b'{"type":"error","message":"Authentication failure"}'), (500, b"<html>")):
+            error = urllib.error.HTTPError(
+                "https://control.msg91.com/api/v5/flow", status, "Error", {}, io.BytesIO(payload)
+            )
+            with self.subTest(status=status), mock.patch("urllib.request.urlopen", side_effect=error):
+                with self.assertRaises(sms.SMSError) as raised:
+                    sms.send_otp_sms(PHONE, "123456")
+                message = str(raised.exception)
+                self.assertIn(f"HTTP {status}", message)
+                self.assertNotIn("test-key", message)
+                self.assertNotIn("123456", message)
+                if status == 401:
+                    self.assertIn("Authentication failure", message)
+
+    def test_unexpected_reply_is_not_treated_as_accepted(self):
+        for payload in ({}, [], {"type": "pending"}):
+            with self.subTest(payload=payload), mock.patch("urllib.request.urlopen", return_value=fake_response(payload)):
+                with self.assertRaises(sms.SMSError):
+                    sms.send_otp_sms(PHONE, "123456")
+
     @override_settings(MSG91_AUTH_KEY="")
     def test_missing_credentials_is_not_configured(self):
         with self.assertRaises(sms.SMSNotConfigured):

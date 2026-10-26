@@ -187,7 +187,12 @@ class SyncAdminGroupsTests(TestCase):
         reviewers = Group.objects.get(name="Read-only reviewers")
         self.assertTrue(reviewers.permissions.exists())
         self.assertFalse(reviewers.permissions.exclude(codename__startswith="view_").exists())
-        self.assertEqual(Group.objects.count(), 4)
+        self.assertEqual(Group.objects.count(), 5)
+        content = Group.objects.get(name="Content managers")
+        self.assertEqual(
+            set(content.permissions.values_list("codename", flat=True)),
+            {"view_successstory", "add_successstory", "change_successstory", "delete_successstory"},
+        )
 
 
 class SidebarTests(TestCase):

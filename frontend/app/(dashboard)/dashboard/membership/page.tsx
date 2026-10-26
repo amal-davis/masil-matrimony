@@ -7,10 +7,11 @@ import { CalendarIcon, CrownIcon, LifebuoyIcon } from "@/features/dashboard/comp
 import { Badge, Card, Notice, PageHeader, primaryButton, secondaryButton } from "@/features/dashboard/components/ui";
 import { formatDate, subscriptionStatus } from "@/features/dashboard/format";
 import { STATIC_EXPORT } from "@/features/dashboard/preview-flag";
-import { getMembership } from "@/features/dashboard/server-api";
+import { getMembership, getPurchases } from "@/features/dashboard/server-api";
 import type { Subscription } from "@/features/dashboard/types";
 import { getPackages } from "@/features/packages/api";
 import { formatInr, validityLabel } from "@/features/packages/packages";
+import { formatAmount, purchaseStatus } from "@/features/payments/format";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Membership & Upgrade" };
@@ -36,8 +37,9 @@ function validity(subscription: Subscription) {
  * member's own membership API.
  */
 export default async function MembershipPage() {
-  const [membership, catalogue] = await Promise.all([getMembership(), getPackages()]);
+  const [membership, catalogue, purchases] = await Promise.all([getMembership(), getPackages(), getPurchases(1)]);
   const { current, entitlements } = membership;
+  const online = membership.online_payment_available;
   const packages = catalogue.ok ? catalogue.packages : [];
   const paidPackages = packages.filter((item) => item.id !== "free");
   const currentPackage = packages.find((item) => item.id === (current?.plan_code ?? "free"));
@@ -165,7 +167,10 @@ export default async function MembershipPage() {
               </ul>
             ) : (
               <ol className="flex flex-col gap-3 text-[0.9375rem]">
-                {["Choose a package below.", "Contact our team to arrange payment.", "Your membership is activated and appears here."].map((text, index) => (
+                {(online
+                  ? ["Choose a package below.", "Pay securely online with Razorpay.", "Your membership is activated once the payment is confirmed, and we email your receipt."]
+                  : ["Choose a package below.", "Contact our team to arrange payment.", "Your membership is activated and appears here."]
+                ).map((text, index) => (
                   <li key={text} className="flex items-start gap-3">
                     <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-wine-600">
                       {index + 1}
@@ -178,14 +183,25 @@ export default async function MembershipPage() {
           </Card>
         </div>
 
-        <Notice>
-          <strong className="font-semibold">Online payment isn&apos;t available yet.</strong> To buy, upgrade or renew a
-          package, please{" "}
-          <Link href="/contact" className="font-medium text-wine-600 underline underline-offset-4">
-            contact us
-          </Link>
-          . Our team activates your membership once payment is confirmed, and it will then appear here.
-        </Notice>
+        {!online ? (
+          <Notice>
+            <strong className="font-semibold">Online payment isn&apos;t available yet.</strong> To buy, upgrade or renew a
+            package, please{" "}
+            <Link href="/contact" className="font-medium text-wine-600 underline underline-offset-4">
+              contact us
+            </Link>
+            . Our team activates your membership once payment is confirmed, and it will then appear here.
+          </Notice>
+        ) : current ? (
+          <Notice>
+            Your membership is active, so another package can&apos;t be bought online until it ends. To renew early or
+            upgrade,{" "}
+            <Link href="/contact" className="font-medium text-wine-600 underline underline-offset-4">
+              contact us
+            </Link>
+            .
+          </Notice>
+        ) : null}
 
         {/* Packages */}
         <section aria-labelledby="packages-title">
@@ -226,9 +242,15 @@ export default async function MembershipPage() {
                     ))}
                   </dl>
                   <p className="mt-4 flex-1 text-sm text-ink-muted">{item.description}</p>
-                  <Link href={item.cta.href} className={cn(isCurrent ? secondaryButton : primaryButton, "mt-5 w-full")}>
-                    {isCurrent ? "Renew – contact us" : `Enquire about ${item.name}`}
-                  </Link>
+                  {online && !current ? (
+                    <Link href={`/dashboard/membership/checkout/${item.id}`} className={cn(primaryButton, "mt-5 w-full")}>
+                      Buy {item.name}
+                    </Link>
+                  ) : (
+                    <Link href="/contact" className={cn(isCurrent ? secondaryButton : primaryButton, "mt-5 w-full")}>
+                      {isCurrent ? "Renew – contact us" : `Enquire about ${item.name}`}
+                    </Link>
+                  )}
                 </li>
               );
             })}
@@ -267,9 +289,41 @@ export default async function MembershipPage() {
                 ))}
               </ul>
             )}
-            <p className="border-t border-line px-5 py-3 text-sm text-ink-muted sm:px-6">
-              There&apos;s no online payment history: payments are handled offline for now.
-            </p>
+          </Card>
+
+          <Card title="Online payments" titleId="payments-title" bodyClassName="p-0">
+            {purchases.results.length === 0 ? (
+              <p className="px-5 py-8 text-center text-[0.9375rem] text-ink-muted sm:px-6">No online payments yet.</p>
+            ) : (
+              <ul className="divide-y divide-line">
+                {purchases.results.map((item) => (
+                  <li key={item.reference} className="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                    <div className="min-w-0">
+                      <p className="font-medium">
+                        {item.package_name} · <span className="tabular-nums">{formatAmount(item.amounts.total)}</span>
+                      </p>
+                      <p className="text-sm text-ink-muted">
+                        {formatDate(item.paid_at ?? item.created_at)} · {item.reference}
+                      </p>
+                      {item.status === "failed" && item.failure_reason && (
+                        <p className="text-sm text-danger">{item.failure_reason}</p>
+                      )}
+                      <p className="mt-1 flex flex-wrap gap-x-4 text-sm">
+                        <Link href={`/dashboard/membership/purchases/${item.reference}`} className="font-medium text-wine-600 underline underline-offset-4">
+                          {item.can_pay || item.can_check_status ? "View or check status" : "View details"}
+                        </Link>
+                        {item.receipt && (
+                          <Link href={`/dashboard/membership/receipts/${item.receipt.id}`} className="font-medium text-wine-600 underline underline-offset-4">
+                            Receipt {item.receipt.number}
+                          </Link>
+                        )}
+                      </p>
+                    </div>
+                    <Badge tone={purchaseStatus[item.status].tone}>{purchaseStatus[item.status].label}</Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
 
           <Card title="Questions about your plan?" titleId="support-title">

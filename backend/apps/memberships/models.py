@@ -4,16 +4,17 @@ Membership packages and member subscriptions to them.
 MembershipPackage is the one place package terms live: the public package
 list, the member dashboard, the admin and the entitlement checks all read it.
 
-There is no payment gateway yet, so subscriptions are recorded and activated
-by staff in the Django admin after an offline payment. A subscription is never
-activated by the member's browser. Each subscription keeps the fee, validity
+Subscriptions are activated either by staff in the Django admin after an
+offline payment, or by apps.payments once Razorpay confirms a captured
+payment on the server. A subscription is never activated by the member's
+browser. Each subscription keeps the fee, validity
 and contact limit it was recorded with, so editing a package later never
 changes what an existing member bought.
 """
 import calendar
 import uuid
 from datetime import datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -32,6 +33,18 @@ def add_months(start: datetime, months: int) -> datetime:
     month = month % 12 + 1
     day = min(start.day, calendar.monthrange(year, month)[1])
     return start.replace(year=year, month=month, day=day)
+
+
+def configured_gst_rate() -> Decimal | None:
+    """settings.MEMBERSHIP_GST_RATE_PERCENT as a Decimal, or None when unset or not a valid percentage."""
+    raw = settings.MEMBERSHIP_GST_RATE_PERCENT
+    if not raw:
+        return None
+    try:
+        rate = Decimal(str(raw))
+    except InvalidOperation:
+        return None
+    return rate if rate.is_finite() and Decimal("0") <= rate <= Decimal("100") else None
 
 
 class PackageCategory(models.TextChoices):
@@ -116,11 +129,25 @@ class MembershipPackage(TimeStampedModel):
         return self.code == PackageCode.FREE
 
     @property
+    def gst_rate(self) -> Decimal | None:
+        """
+        The GST rate (percent) this package's price uses: its stated rate, or for
+        "plus applicable GST" packages settings.MEMBERSHIP_GST_RATE_PERCENT. None
+        while that isn't confirmed, so no total can be calculated or charged.
+        """
+        if self.tax_treatment == TaxTreatment.GST_STATED:
+            return self.stated_gst_rate
+        if self.tax_treatment == TaxTreatment.GST_EXTRA:
+            return configured_gst_rate()
+        return None
+
+    @property
     def gst_amount(self) -> Decimal | None:
-        """GST in rupees when the package states a rate; None when GST is extra at the applicable rate."""
-        if self.tax_treatment != TaxTreatment.GST_STATED or self.stated_gst_rate is None:
+        """GST in rupees, rounded to the paisa (half up); None while the rate is unknown."""
+        rate = self.gst_rate
+        if rate is None:
             return None
-        return (self.fee * self.stated_gst_rate / 100).quantize(Decimal("0.01"))
+        return (self.fee * rate / 100).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     @property
     def total_payable(self) -> Decimal | None:

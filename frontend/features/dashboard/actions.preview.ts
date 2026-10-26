@@ -26,3 +26,7 @@ export const viewContactNumber = unavailable;
 export const removeFromShortlist = unavailable;
 export const markNotificationRead = unavailable;
 export const markAllNotificationsRead = unavailable;
+export const startPurchase = unavailable;
+export const verifyPayment = unavailable;
+export const refreshPaymentStatus = unavailable;
+export const updateEmail = unavailable;

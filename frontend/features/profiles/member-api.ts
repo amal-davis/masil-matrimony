@@ -1,13 +1,13 @@
 import { accessToken } from "@/features/auth/session";
-import type { MemberProfileDetail } from "@/features/dashboard/types";
+import type { MemberProfileDetail, ProfileAccess } from "@/features/dashboard/types";
 import { api, ApiError } from "@/lib/api/client";
 
 import { normaliseProfileCode } from "./api";
 import type { ProfileDetail } from "./types";
 
 export type MemberProfileResult =
-  | { kind: "found"; profile: ProfileDetail; viewer: MemberProfileDetail["viewer"] }
-  /** Real profiles are for signed-in members only. */
+  | { kind: "found"; profile: ProfileDetail; viewer: MemberProfileDetail["viewer"]; access: ProfileAccess }
+  /** Not signed in, and this member hasn't agreed to be shown publicly (or the code is unknown). */
   | { kind: "signed_out" }
   /** Signed in, but the member hasn't created their own profile yet. */
   | { kind: "no_profile" }
@@ -16,9 +16,12 @@ export type MemberProfileResult =
 const orUndefined = (value: string | null | undefined) => (value ? value : undefined);
 const listOrUndefined = (values: string[]) => (values.length ? values : undefined);
 
-/** Map the API's privacy-filtered profile onto the shape the profile page renders. */
+/**
+ * Map the API's privacy-filtered profile onto the shape the profile page renders.
+ * Sections the API didn't send (below full access) stay undefined, not empty.
+ */
 function toProfileDetail(data: MemberProfileDetail): ProfileDetail {
-  const prefs = data.partner_preferences;
+  const { career, family, lifestyle, partner_preferences: prefs } = data;
   return {
     id: data.profile_code,
     profileCode: data.profile_code,
@@ -42,29 +45,29 @@ function toProfileDetail(data: MemberProfileDetail): ProfileDetail {
     photos: data.photos,
     photosHidden: data.photos_hidden,
     about: orUndefined(data.about),
-    career: {
-      qualification: orUndefined(data.career.qualification),
-      institution: orUndefined(data.career.institution),
-      profession: orUndefined(data.career.profession),
-      employmentType: orUndefined(data.career.employment_type),
-      workLocation: orUndefined(data.career.work_location),
-      annualIncome: orUndefined(data.career.annual_income),
+    career: career && {
+      qualification: orUndefined(career.qualification),
+      institution: orUndefined(career.institution),
+      profession: orUndefined(career.profession),
+      employmentType: orUndefined(career.employment_type),
+      workLocation: orUndefined(career.work_location),
+      annualIncome: orUndefined(career.annual_income),
     },
-    family: {
-      type: orUndefined(data.family.type),
-      values: orUndefined(data.family.values),
-      location: orUndefined(data.family.location),
-      fatherOccupation: orUndefined(data.family.father_occupation),
-      motherOccupation: orUndefined(data.family.mother_occupation),
-      siblings: orUndefined(data.family.siblings),
+    family: family && {
+      type: orUndefined(family.type),
+      values: orUndefined(family.values),
+      location: orUndefined(family.location),
+      fatherOccupation: orUndefined(family.father_occupation),
+      motherOccupation: orUndefined(family.mother_occupation),
+      siblings: orUndefined(family.siblings),
     },
-    lifestyle: {
-      diet: orUndefined(data.lifestyle.diet),
-      hobbies: listOrUndefined(data.lifestyle.hobbies),
-      interests: listOrUndefined(data.lifestyle.interests),
-      languages: listOrUndefined(data.lifestyle.languages),
+    lifestyle: lifestyle && {
+      diet: orUndefined(lifestyle.diet),
+      hobbies: listOrUndefined(lifestyle.hobbies),
+      interests: listOrUndefined(lifestyle.interests),
+      languages: listOrUndefined(lifestyle.languages),
     },
-    partnerPreferences: {
+    partnerPreferences: prefs && {
       ageRange: prefs.age_range ?? undefined,
       heightRangeCm: prefs.height_range_cm ?? undefined,
       maritalStatus: orUndefined(prefs.marital_status),
@@ -77,19 +80,19 @@ function toProfileDetail(data: MemberProfileDetail): ProfileDetail {
 }
 
 /**
- * A real member's profile, fetched as the signed-in viewer so the API applies
- * their visibility and privacy rules. Reads the session cookie, so call it
- * inside a <Suspense> boundary.
+ * A real member's profile as the API allows this request to see it: fetched with
+ * the session's token when there is one (never cached, since the answer differs
+ * per viewer), and without one for visitors, whom the API shows only what members
+ * agreed to make public. Reads the session cookie, so call it inside <Suspense>.
  */
 export async function getMemberProfile(code: string): Promise<MemberProfileResult> {
   const token = await accessToken();
-  if (!token) return { kind: "signed_out" };
   try {
     const data = await api.get<MemberProfileDetail>(`/profiles/${encodeURIComponent(normaliseProfileCode(code))}/`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
       cache: "no-store",
     });
-    return { kind: "found", profile: toProfileDetail(data), viewer: data.viewer };
+    return { kind: "found", profile: toProfileDetail(data), viewer: data.viewer, access: data.access };
   } catch (error) {
     if (error instanceof ApiError) {
       if (error.status === 401) return { kind: "signed_out" };

@@ -44,5 +44,11 @@ DEFAULT_FROM_EMAIL = "Massil Matrimony <noreply@example.com>"
 FRONTEND_URL = "https://www.example.com"
 ADMIN_ENVIRONMENT_NAME = "Test"
 
+# Razorpay: obviously fake values (tests mock every Razorpay call; nothing is sent).
+RAZORPAY_MODE = "test"
+RAZORPAY_KEY_ID = "rzp_test_FAKEKEY0000000"
+RAZORPAY_KEY_SECRET = "fake-key-secret-for-tests"
+RAZORPAY_WEBHOOK_SECRET = "fake-webhook-secret-for-tests"
+
 # Codes are collected in apps.notifications.sms.outbox.
 SMS_PROVIDER = "locmem"

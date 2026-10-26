@@ -1,3 +1,5 @@
+import { DASHBOARD_PREVIEW } from "@/features/dashboard/preview-flag";
+
 /**
  * Membership package types and display helpers.
  *
@@ -90,6 +92,8 @@ export interface MembershipPackage {
  * choice yet. Free membership starts with the registration form on the home page.
  */
 const ENQUIRY_HREF = "/contact";
+/** Paid packages open checkout (sign-in required); the static design preview has no checkout, so it enquires. */
+const checkoutHref = (code: string) => (DASHBOARD_PREVIEW ? ENQUIRY_HREF : `/dashboard/membership/checkout/${code}`);
 const REGISTER_HREF = "/#register";
 
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -178,7 +182,9 @@ export function toPackage(dto: PackageDto): MembershipPackage {
     terms: dto.terms,
     cta: isFree
       ? { label: dto.cta_label, href: REGISTER_HREF, note: "Opens the free registration form." }
-      : { label: dto.cta_label, href: ENQUIRY_HREF, note: "Opens our contact form to send an enquiry." },
+      : DASHBOARD_PREVIEW
+        ? { label: dto.cta_label, href: ENQUIRY_HREF, note: "Opens our contact form to send an enquiry." }
+        : { label: dto.cta_label, href: checkoutHref(dto.code), note: "Opens secure checkout. You'll be asked to log in first." },
   };
 }
 

@@ -16,6 +16,8 @@ import type {
   DashboardSummary,
   InterestItem,
   InterestStatus,
+  MatchCard,
+  MatchInfo,
   MemberCard,
   MembershipInfo,
   NotificationItem,
@@ -84,6 +86,7 @@ export const previewProfile: OwnProfile = {
   visibility: "members",
   photo_visibility: "members",
   contact_sharing: "hidden",
+  homepage_consent: false,
   partner_preference: {
     age_min: 23,
     age_max: 28,
@@ -92,10 +95,13 @@ export const previewProfile: OwnProfile = {
     marital_statuses: ["never_married"],
     religions: ["hindu"],
     communities: [],
+    mother_tongues: [],
+    diets: [],
     locations: "Kerala",
     education: "Graduate or above",
     occupation: "",
     notes: "",
+    must_haves: ["age", "height", "marital_status", "religion"],
   },
 };
 
@@ -158,9 +164,32 @@ export const previewSent: InterestItem[] = [
 
 const SHORTLISTED = ["DEMO003", "DEMO009"];
 
-export const previewMatches: (MemberCard & { shortlisted: boolean })[] = demoProfileDetails
+/**
+ * The sample member's matches, scored against their sample preferences (age 23-28, Hindu,
+ * Kerala) with the API's weights for those three criteria, so the preview shows real reasons.
+ */
+function previewMatch(card: MemberCard): MatchInfo {
+  const checks: [boolean, number, string][] = [
+    [card.age >= 23 && card.age <= 28, 20, "Matches your age preference (23–28)"],
+    [card.religion === "Hindu", 15, "Matches your religion preference"],
+    [card.location.state.toLowerCase() === "kerala", 12, "Lives in or comes from a place you prefer"],
+  ];
+  const earned = checks.filter(([ok]) => ok).reduce((sum, [, weight]) => sum + weight, 0);
+  return {
+    score: Math.round((100 * earned) / 47),
+    reasons: checks.filter(([ok]) => ok).map(([, , reason]) => reason),
+    not_stated: [],
+    mutual: true,
+  };
+}
+
+export const previewMatches: MatchCard[] = demoProfileDetails
   .filter((profile) => profile.gender === "female")
-  .map((profile) => ({ ...toCard(profile), shortlisted: SHORTLISTED.includes(profile.profileCode) }));
+  .map((profile) => {
+    const card = toCard(profile);
+    return { ...card, shortlisted: SHORTLISTED.includes(profile.profileCode), match: previewMatch(card) };
+  })
+  .sort((a, b) => (b.match.score ?? 0) - (a.match.score ?? 0));
 
 export const previewShortlist: ShortlistItem[] = SHORTLISTED.map((code, i) => ({
   created_at: at(`2026-10-1${i + 4}`),
@@ -200,7 +229,6 @@ export const previewAccount = {
   phone_number: "+919876543210",
   first_name: "Arun",
   last_name: "",
-  email_verified_at: at("2026-07-15"),
   phone_verified_at: at("2026-07-15"),
   date_joined: at("2026-07-15"),
 };

@@ -115,6 +115,23 @@ class Profile(TimeStampedModel):
         max_length=12, choices=ContactSharing.choices, default=ContactSharing.HIDDEN,
         help_text="The member's consent to paid members viewing their mobile number.",
     )
+    # The member's own consent to appear on the public homepage, which visitors who aren't
+    # members can see. Profiles are otherwise members-only (see the privacy policy), so a
+    # highlight alone never makes a profile public. Only the member can change this.
+    homepage_consent = models.BooleanField(
+        default=False,
+        help_text="The member agreed to be featured on the public homepage (given name, age, education, "
+        "location, and their main photo if their photos are visible to all members).",
+    )
+
+    # Homepage "Highlighted Profiles", chosen by staff (apps.profiles.highlights).
+    is_highlighted = models.BooleanField(
+        "Highlighted on homepage", default=False, db_index=True,
+        help_text="Show on the homepage. Only approved, visible profiles whose member has agreed to be featured appear.",
+    )
+    highlight_order = models.PositiveSmallIntegerField(
+        "Homepage position", default=0, help_text="Lower numbers appear first; ties show the newest approval first.",
+    )
 
     # Review by verification staff.
     status = models.CharField(
@@ -134,6 +151,7 @@ class Profile(TimeStampedModel):
             # Matches: approved, visible profiles of one gender, newest first.
             models.Index(fields=["status", "visibility", "gender", "reviewed_at"]),
         ]
+        permissions = [("highlight_profile", "Can highlight profiles on the homepage")]
 
     def __str__(self):
         return f"{self.profile_code} ({self.display_name})"
@@ -148,7 +166,22 @@ class Profile(TimeStampedModel):
         return self.status != ProfileStatus.DRAFT
 
 
+def default_must_haves() -> list[str]:
+    """
+    Criteria that exclude non-matching profiles until the member says otherwise.
+    These four were always applied as strict filters, so existing members keep
+    the same matches. A criterion only applies once the member fills it in.
+    """
+    return ["age", "height", "marital_status", "religion"]
+
+
 class PartnerPreference(TimeStampedModel):
+    """
+    What a member looks for (apps.profiles.matching). Every criterion is optional;
+    those listed in `must_haves` exclude profiles that don't match, the rest
+    only rank them.
+    """
+
     profile = models.OneToOneField(Profile, on_delete=models.CASCADE, related_name="partner_preference")
     age_min = models.PositiveSmallIntegerField(null=True, blank=True, validators=[MinValueValidator(18), MaxValueValidator(80)])
     age_max = models.PositiveSmallIntegerField(null=True, blank=True, validators=[MinValueValidator(18), MaxValueValidator(80)])
@@ -157,10 +190,15 @@ class PartnerPreference(TimeStampedModel):
     marital_statuses = models.JSONField(default=list, blank=True)
     religions = models.JSONField(default=list, blank=True)
     communities = models.JSONField(default=list, blank=True)
+    mother_tongues = models.JSONField(default=list, blank=True)
+    diets = models.JSONField(default=list, blank=True)
+    # Free text: comma-separated places, qualifications or professions (apps.profiles.matching).
     locations = models.CharField(max_length=120, blank=True)
     education = models.CharField(max_length=120, blank=True)
     occupation = models.CharField(max_length=120, blank=True)
     notes = models.TextField(max_length=500, blank=True)
+    # Criterion keys (apps.profiles.matching.CRITERIA) that are requirements, not just wishes.
+    must_haves = models.JSONField(default=default_must_haves, blank=True)
 
     def __str__(self):
         return f"Partner preference for {self.profile.profile_code}"

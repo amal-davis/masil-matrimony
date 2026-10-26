@@ -25,6 +25,9 @@ const numberIn = (min: number, max: number, message: string) =>
     .string()
     .refine((value) => value === "" || (/^\d+$/.test(value) && +value >= min && +value <= max), message);
 
+/** Free text, at most 60 characters; "" means any. */
+const text = (message: string) => z.string().trim().max(60, message);
+
 const fields = z.object({
   lookingFor: z.enum(["bride", "groom"], { error: "Choose bride or groom." }),
   ageMin: numberIn(AGE_RANGE.min, AGE_RANGE.max, "Choose a valid age."),
@@ -36,6 +39,12 @@ const fields = z.object({
   location: anyOf(locationOptions, "Choose a location from the list."),
   maritalStatus: anyOf(maritalStatusOptions, "Choose a marital status from the list."),
   motherTongue: anyOf(motherTongueOptions, "Choose a mother tongue from the list."),
+  education: text("Keep this under 60 characters."),
+  occupation: text("Keep this under 60 characters."),
+  profileId: z
+    .string()
+    .trim()
+    .refine((value) => value === "" || /^mm\d{6}$/i.test(value), "Enter a Matrimony ID such as MM482913."),
 });
 
 // Cross-field rules run even while other fields (e.g. bride/groom) are still invalid.
@@ -75,11 +84,14 @@ export const emptyFilters: Omit<PartnerSearchInput, "lookingFor"> = {
   location: "",
   maritalStatus: "",
   motherTongue: "",
+  education: "",
+  occupation: "",
+  profileId: "",
 };
 
 /**
- * URL query parameters, following the planned `GET /profiles/search/` contract
- * in docs/api-specification.md (snake_case, `age_min`/`age_max`, ...).
+ * URL query parameters: exactly the parameters of `GET /profiles/search/`
+ * (backend/apps/profiles/search.py), so the page passes them straight through.
  * `gender` is the gender of the profiles being searched for.
  */
 const queryKeys = {
@@ -92,6 +104,9 @@ const queryKeys = {
   location: "location",
   maritalStatus: "marital_status",
   motherTongue: "mother_tongue",
+  education: "education",
+  occupation: "occupation",
+  profileId: "profile_id",
 } as const satisfies Record<keyof typeof emptyFilters, string>;
 
 const genderFor = { bride: "female", groom: "male" } as const;
@@ -155,5 +170,8 @@ export function describeFilters(values: Partial<PartnerSearchInput>): string[] {
     label(locationOptions, values.location),
     label(maritalStatusOptions, values.maritalStatus),
     values.motherTongue && `${label(motherTongueOptions, values.motherTongue)} speaking`,
+    values.education && `Education: ${values.education}`,
+    values.occupation && `Occupation: ${values.occupation}`,
+    values.profileId && `ID ${values.profileId.toUpperCase()}`,
   ].filter((item): item is string => Boolean(item));
 }

@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { FORGOT_PASSWORD_PATH } from "@/features/auth/constants";
 import { maskPhoneNumber } from "@/features/auth/schema";
+import { EmailForm } from "@/features/dashboard/components/email-form";
 import { LogoutIcon } from "@/features/dashboard/components/icons";
 import { PrivacySettings } from "@/features/dashboard/components/photo-privacy";
 import { DASHBOARD_PREVIEW } from "@/features/dashboard/preview-flag";
@@ -40,15 +40,14 @@ export default async function SettingsPage() {
       <div>
         <SettingsGroup id="account-title" title="Account" description="The details we use to recognise you.">
           <dl className="grid gap-5 sm:grid-cols-2">
-            <div className="min-w-0">
-              <dt className="text-sm text-ink-muted">Email address (used to sign in)</dt>
-              <dd className="mt-1 flex flex-wrap items-center gap-2 font-medium break-all">
-                {account.email}
-                {account.email_verified_at && <Badge tone="success">Verified</Badge>}
+            <div id="email" className="min-w-0 scroll-mt-24 sm:col-span-2">
+              <dt className="text-sm text-ink-muted">Email address (payment receipts)</dt>
+              <dd className="mt-1">
+                {DASHBOARD_PREVIEW ? <span className="font-medium break-all">{account.email}</span> : <EmailForm email={account.email} />}
               </dd>
             </div>
             <div>
-              <dt className="text-sm text-ink-muted">Registered mobile number</dt>
+              <dt className="text-sm text-ink-muted">Registered mobile number (used to log in)</dt>
               <dd className="mt-1 flex flex-wrap items-center gap-2 font-medium">
                 {account.phone_number ? maskPhoneNumber(account.phone_number) : "Not added"}
                 {account.phone_verified_at && <Badge tone="success">Verified</Badge>}
@@ -60,7 +59,7 @@ export default async function SettingsPage() {
             </div>
           </dl>
           <p className="mt-5 border-t border-line pt-4 text-sm text-ink-muted">
-            To change your email address or registered mobile number, please{" "}
+            To change your registered mobile number, please{" "}
             <Link href="/contact" className={link}>contact us</Link> so we can verify the change.
           </p>
         </SettingsGroup>
@@ -72,6 +71,7 @@ export default async function SettingsPage() {
                 visibility: profile.visibility,
                 photo_visibility: profile.photo_visibility,
                 contact_sharing: profile.contact_sharing,
+                homepage_consent: profile.homepage_consent,
               }}
             />
           ) : (
@@ -87,9 +87,8 @@ export default async function SettingsPage() {
             <li>
               <span className="font-medium">Sign-in:</span>{" "}
               <span className="text-ink-muted">
-                your email address and password. To change your password,{" "}
-                <Link href={FORGOT_PASSWORD_PATH} className={link}>request a reset link</Link>; we&apos;ll email it to
-                you, and changing it signs you out on every device.
+                a one-time code sent by SMS to your registered mobile number; there&apos;s no password. To change
+                the number, <Link href="/contact" className={link}>contact us</Link> and we&apos;ll verify the change.
               </span>
             </li>
             <li>

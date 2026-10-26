@@ -8,7 +8,7 @@ from django.contrib.auth.models import Permission
 from django.core.exceptions import ValidationError
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from apps.accounts.roles import Role
@@ -138,7 +138,10 @@ class MembershipApiTests(TestCase):
         body = self.client.get(URL).json()
         self.assertIsNone(body["current"])
         self.assertEqual(body["history"], [])
-        self.assertIs(body["online_payment_available"], False)
+        # The test settings configure (fake) Razorpay keys; without keys it is False.
+        self.assertIs(body["online_payment_available"], True)
+        with override_settings(RAZORPAY_KEY_ID="", RAZORPAY_KEY_SECRET=""):
+            self.assertIs(self.client.get(URL).json()["online_payment_available"], False)
         self.assertEqual(body["entitlements"]["package_code"], "free")
         self.assertEqual(body["entitlements"]["outgoing_interest_limit"], 15)
         self.assertEqual(body["entitlements"]["outgoing_interests_used"], 0)

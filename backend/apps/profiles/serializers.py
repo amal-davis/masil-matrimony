@@ -16,6 +16,8 @@ from .choices import (
     FamilyValues,
     MaritalStatus,
     MotherTongue,
+    PhotoStatus,
+    PhotoVisibility,
     Religion,
 )
 from .models import PartnerPreference, Profile, ProfilePhoto, age_on
@@ -67,10 +69,13 @@ class PartnerPreferenceSerializer(serializers.ModelSerializer):
             "marital_statuses",
             "religions",
             "communities",
+            "mother_tongues",
+            "diets",
             "locations",
             "education",
             "occupation",
             "notes",
+            "must_haves",
         ]
 
     def _choice_list(self, value, allowed, field):
@@ -88,6 +93,17 @@ class PartnerPreferenceSerializer(serializers.ModelSerializer):
 
     def validate_communities(self, value):
         return self._choice_list(value, ALL_COMMUNITIES, "communities")
+
+    def validate_mother_tongues(self, value):
+        return self._choice_list(value, MotherTongue.values, "mother_tongues")
+
+    def validate_diets(self, value):
+        return self._choice_list(value, Diet.values, "diets")
+
+    def validate_must_haves(self, value):
+        from .matching import CRITERION_KEYS
+
+        return self._choice_list(value, CRITERION_KEYS, "must_haves")
 
     def validate(self, attrs):
         merged = {**{f: getattr(self.instance, f) for f in self.Meta.fields if self.instance}, **attrs}
@@ -153,6 +169,9 @@ class OwnProfileSerializer(serializers.ModelSerializer):
             "visibility",
             "photo_visibility",
             "contact_sharing",
+            # The member's own consent to the public homepage. Whether staff highlighted the
+            # profile (is_highlighted) is deliberately not part of the member's API.
+            "homepage_consent",
             "partner_preference",
         ]
         read_only_fields = ["profile_code", "status", "review_note", "submitted_at", "identity_locked"]
@@ -247,9 +266,13 @@ def photo_data(photo, request):
     return {"url": signed_photo_url(photo, request), "width": photo.width, "height": photo.height}
 
 
-def card_data(viewer, profile, request) -> dict:
-    """The summary used in lists (matches, interests, shortlist)."""
-    photo = services.primary_photo(viewer, profile)
+def card_data(viewer, profile, request, accepted_ids=None) -> dict:
+    """
+    The summary used in lists (matches, interests, shortlist). Lists pass
+    `accepted_ids` (services.accepted_partner_ids) and prefetch approved photos
+    (services.approved_photos_prefetch) to avoid queries per card.
+    """
+    photo = services.primary_photo(viewer, profile, accepted_ids)
     return {
         "profile_code": profile.profile_code,
         "display_name": profile.display_name,
@@ -268,23 +291,70 @@ def card_data(viewer, profile, request) -> dict:
             "country": profile.country,
         },
         "photo": photo_data(photo, request) if photo else None,
-        "photos_hidden": services.photos_hidden_from(viewer, profile),
+        "photos_hidden": services.photos_hidden_from(viewer, profile, accepted_ids),
     }
 
 
-def detail_data(viewer, profile, request) -> dict:
-    """The full profile page, privacy-filtered. Never includes contact details or date of birth."""
+def public_detail_data(profile, request, access) -> dict:
+    """
+    A visitor's view (not signed in) of a member who agreed to be shown publicly:
+    exactly what that consent covers (Profile.homepage_consent), nothing else.
+    """
+    main = services.primary_photo(None, profile) if profile.photo_visibility == PhotoVisibility.MEMBERS else None
+    photo = photo_data(main, request) if main else None
+    return {
+        "profile_code": profile.profile_code,
+        "display_name": profile.display_name.split()[0] if profile.display_name.split() else "",
+        "gender": profile.gender,
+        "age": profile.age,
+        "education": profile.highest_education,
+        "location": {"city": profile.city, "district": profile.district, "state": profile.state, "country": ""},
+        "photo": photo,
+        "photos": [photo] if photo else [],
+        "photos_hidden": (
+            profile.photo_visibility != PhotoVisibility.MEMBERS
+            and profile.photos.filter(status=PhotoStatus.APPROVED).exists()
+        ),
+        "access": access.as_dict(),
+        "viewer": None,
+    }
+
+
+def detail_data(viewer, profile, request, access) -> dict:
+    """
+    A member's view of a profile, cut to their access level (apps.profiles.access):
+    the basic section and one photo, or every section and permitted photo. Only the
+    fields of that level are built: restricted data never enters the response.
+    Never includes contact details or date of birth.
+    """
     from apps.interactions.models import Interest, Shortlist
     from apps.interactions.services import contact_status
 
-    pref = getattr(profile, "partner_preference", None)
-    is_own = viewer is not None and viewer.pk == profile.pk
-    sent = Interest.objects.filter(sender=viewer, receiver=profile).first() if viewer and not is_own else None
-    received = Interest.objects.filter(sender=profile, receiver=viewer).first() if viewer and not is_own else None
+    is_own = viewer.pk == profile.pk
+    sent = Interest.objects.filter(sender=viewer, receiver=profile).first() if not is_own else None
+    received = Interest.objects.filter(sender=profile, receiver=viewer).first() if not is_own else None
 
-    return {
+    basic = {
         **card_data(viewer, profile, request),
         "mother_tongue": label(MotherTongue, profile.mother_tongue),
+        "access": access.as_dict(),
+        "viewer": {
+            "is_own_profile": is_own,
+            "interest_sent": {"id": str(sent.public_id), "status": sent.status} if sent else None,
+            "interest_received": {"id": str(received.public_id), "status": received.status} if received else None,
+            "shortlisted": not is_own and Shortlist.objects.filter(owner=viewer, profile=profile).exists(),
+            # Whether the viewer may see this member's number (POST .../contact/ shows it).
+            "contact": contact_status(viewer, profile) if not is_own else None,
+        },
+    }
+    if not access.full:
+        # The basic section: the main photo only (card_data already applied photo privacy).
+        basic["photos"] = [basic["photo"]] if basic["photo"] else []
+        return basic
+
+    pref = getattr(profile, "partner_preference", None)
+    return {
+        **basic,
         "native_place": profile.native_place,
         "about": profile.about,
         "photos": [photo_data(photo, request) for photo in services.visible_photos(viewer, profile)
@@ -321,13 +391,5 @@ def detail_data(viewer, profile, request) -> dict:
             "education": pref.education if pref else "",
             "location": pref.locations if pref else "",
             "notes": pref.notes if pref else "",
-        },
-        "viewer": {
-            "is_own_profile": is_own,
-            "interest_sent": {"id": str(sent.public_id), "status": sent.status} if sent else None,
-            "interest_received": {"id": str(received.public_id), "status": received.status} if received else None,
-            "shortlisted": bool(viewer and not is_own and Shortlist.objects.filter(owner=viewer, profile=profile).exists()),
-            # Whether the viewer may see this member's number (POST .../contact/ shows it).
-            "contact": contact_status(viewer, profile) if viewer and not is_own else None,
         },
     }

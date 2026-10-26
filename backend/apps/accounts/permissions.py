@@ -12,9 +12,26 @@ from rest_framework.permissions import BasePermission
 from .roles import Role
 
 
-class EmailNotVerifiedDenied(PermissionDenied):
-    default_detail = "Please verify your email address to use your account."
-    default_code = "email_not_verified"
+class PhoneNotVerifiedDenied(PermissionDenied):
+    default_detail = "Please log in with a code sent to your mobile number to use your account."
+    default_code = "phone_not_verified"
+
+
+def requires_phone_verification(user) -> bool:
+    """
+    True for member accounts that haven't proved their mobile number with an
+    SMS code (registration and sign-in both do). Staff use the admin site instead.
+    """
+    return getattr(user, "role", None) == Role.MEMBER and user.phone_verified_at is None
+
+
+def user_authentication_rule(user) -> bool:
+    """
+    SIMPLE_JWT["USER_AUTHENTICATION_RULE"]: active, and mobile-verified if a
+    member. Applies when tokens are issued and on every refresh, so a session
+    can't outlive a suspension or a change of mobile number.
+    """
+    return user is not None and user.is_active and not requires_phone_verification(user)
 
 
 class HasRole(BasePermission):
@@ -33,16 +50,16 @@ class HasRole(BasePermission):
 
 
 class IsMember(HasRole):
-    """Members (and super administrators). A member must have verified their email address."""
+    """Members (and super administrators). A member must have verified their mobile number."""
 
     allowed_roles = frozenset({Role.MEMBER})
 
     def has_permission(self, request, view):
         if not super().has_permission(request, view):
             return False
-        if request.user.role == Role.MEMBER and request.user.email_verified_at is None:
-            # A distinct code, so the website can send the member to verify instead of an error page.
-            raise EmailNotVerifiedDenied()
+        if requires_phone_verification(request.user):
+            # A distinct code, so the website can send the member to sign in instead of an error page.
+            raise PhoneNotVerifiedDenied()
         return True
 
 

@@ -9,9 +9,11 @@ import type { HighlightedProfilesResult } from "../types";
 import { ProfileCard } from "./profile-card";
 
 /**
- * Homepage "Highlighted Profiles" section: two rows of six profile cards and a link to
- * search. Renders nothing when there are no profiles to show or loading fails,
- * so a profiles outage never breaks the homepage.
+ * Homepage "Highlighted Profiles" section: up to two rows of six profile cards,
+ * chosen by staff in the admin, and a link to search. With none highlighted it
+ * says so; if the API can't be reached the section is left out (and the error
+ * logged on the server), so an outage never breaks the homepage or shows
+ * visitors error details.
  */
 export async function HighlightedProfiles() {
   let result: HighlightedProfilesResult;
@@ -22,7 +24,28 @@ export async function HighlightedProfiles() {
     return null;
   }
   const { profiles, source } = result;
-  if (profiles.length === 0) return null;
+  if (profiles.length === 0) {
+    return (
+      <section aria-labelledby="highlighted-profiles-title" className="bg-white py-14 sm:py-20">
+        <Container size="wide">
+          <div className="mx-auto max-w-2xl text-center">
+            <h2 id="highlighted-profiles-title" className="text-3xl font-semibold sm:text-4xl">
+              Highlighted Profiles
+            </h2>
+            <p className="mt-3 text-lg text-ink-muted">
+              Featured member profiles will appear here soon. Register free to see the approved profiles that match you.
+            </p>
+            <Link
+              href="/#register"
+              className="mt-8 inline-flex h-12 items-center justify-center rounded-md border border-wine-600 px-7 text-base font-medium text-wine-600 transition-colors duration-200 hover:bg-wine-600 hover:text-white focus-visible:outline-wine-600"
+            >
+              Register free
+            </Link>
+          </div>
+        </Container>
+      </section>
+    );
+  }
 
   return (
     <section aria-labelledby="highlighted-profiles-title" className="bg-white py-14 sm:py-20">

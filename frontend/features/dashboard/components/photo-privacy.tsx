@@ -8,11 +8,13 @@ import { updateProfile } from "../actions";
 import { contactSharingOptions, photoVisibilityOptions, visibilityOptions } from "../profile-options";
 import { Notice, primaryButton } from "./ui";
 
-type Privacy = { visibility: string; photo_visibility: string; contact_sharing?: string };
+type Privacy = { visibility: string; photo_visibility: string; contact_sharing?: string; homepage_consent?: boolean };
 
 /**
  * Who can see the profile, its photos and (when `initial.contact_sharing` is
- * given) the member's mobile number. Saved through the profile API.
+ * given) the member's mobile number, and (when `initial.homepage_consent` is
+ * given) whether the member agrees to be featured on the public homepage.
+ * Saved through the profile API.
  */
 export function PrivacySettings({ initial, showProfileVisibility = true }: { initial: Privacy; showProfileVisibility?: boolean }) {
   const id = useId();
@@ -20,10 +22,12 @@ export function PrivacySettings({ initial, showProfileVisibility = true }: { ini
   const [message, setMessage] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
   const [saving, start] = useTransition();
   const showContactSharing = initial.contact_sharing !== undefined;
+  const showHomepageConsent = initial.homepage_consent !== undefined;
   const dirty =
     values.visibility !== initial.visibility ||
     values.photo_visibility !== initial.photo_visibility ||
-    values.contact_sharing !== initial.contact_sharing;
+    values.contact_sharing !== initial.contact_sharing ||
+    values.homepage_consent !== initial.homepage_consent;
 
   const save = () =>
     start(async () => {
@@ -100,6 +104,26 @@ export function PrivacySettings({ initial, showProfileVisibility = true }: { ini
             Your number is never on your public profile. If you share it, members whose paid package includes
             contact access can view it, and each view counts toward their package&apos;s limit. Free members never
             see it. You can stop sharing at any time.
+          </p>
+        </div>
+      )}
+      {showHomepageConsent && (
+        <div>
+          <label className="flex max-w-prose items-start gap-3 text-[0.9375rem] font-medium text-ink">
+            <input
+              type="checkbox"
+              checked={Boolean(values.homepage_consent)}
+              onChange={(event) => setValues({ ...values, homepage_consent: event.target.checked })}
+              aria-describedby={`${id}-homepage-hint`}
+              className="mt-0.5 size-5 shrink-0 accent-wine-600"
+            />
+            Allow Massil Matrimony to feature my profile on the public homepage
+          </label>
+          <p id={`${id}-homepage-hint`} className="mt-1.5 ml-8 max-w-prose text-sm text-ink-muted">
+            Off by default. If you agree and our team selects your profile, visitors to the homepage, including people
+            who aren&apos;t members, may see your first name, age, education, city or district and state, and your main
+            photo if your photos are visible to all members, on the homepage and on your profile page. Never your surname, contact details or anything else. You
+            can turn this off at any time and your profile is removed from the homepage straight away.
           </p>
         </div>
       )}

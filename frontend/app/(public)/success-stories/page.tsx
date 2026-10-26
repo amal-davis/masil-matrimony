@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 
 import { Container } from "@/components/ui/container";
+import { STATIC_EXPORT } from "@/features/dashboard/preview-flag";
 import { StoryGallery, StoryGallerySkeleton } from "@/features/success-stories/components/story-gallery";
 
 export const metadata: Metadata = {
@@ -10,7 +11,15 @@ export const metadata: Metadata = {
     "Stories, photographs and celebrations that couples choose to share as they begin a new chapter together with Massil Matrimony.",
 };
 
-export default function SuccessStoriesPage() {
+/** Reads ?page= inside Suspense, so the hero above stays part of the prerendered page. */
+async function Gallery({ searchParams }: { searchParams: PageProps<"/success-stories">["searchParams"] }) {
+  // The static preview (GitHub Pages) has no query string on the server; its samples fit on one page.
+  const value = STATIC_EXPORT ? undefined : (await searchParams).page;
+  const page = Number(Array.isArray(value) ? value[0] : value);
+  return <StoryGallery page={Number.isInteger(page) && page > 0 ? page : 1} />;
+}
+
+export default function SuccessStoriesPage({ searchParams }: PageProps<"/success-stories">) {
   return (
     <>
       <section aria-labelledby="success-stories-title" className="relative isolate overflow-hidden bg-wine-800">
@@ -44,7 +53,7 @@ export default function SuccessStoriesPage() {
       </section>
 
       <Suspense fallback={<StoryGallerySkeleton />}>
-        <StoryGallery />
+        <Gallery searchParams={searchParams} />
       </Suspense>
     </>
   );

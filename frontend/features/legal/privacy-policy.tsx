@@ -145,8 +145,9 @@ export const privacySections: LegalSection[] = [
         <List
           items={[
             "A new profile is not shown to anyone until you submit it and our team has reviewed it.",
-            "Approved profiles can be seen only by signed-in members, not by visitors or search engines.",
-            "Other members see your profile details, but never your email address, mobile number or exact date of birth on your profile page.",
+            "Approved profiles can be seen only by signed-in members, not by visitors or search engines. The only exception is if you allow us to feature your profile on the public homepage (in your privacy settings) and our team selects it: visitors may then see your first name, age, education, location and main photo (if your photos are visible to all members), on the homepage and on your profile page. Your profile page is still kept out of search engines.",
+            "Signed-in members without a paid membership see the basic details at the top of your profile and your main photo. Members with a paid membership also see the rest of your profile (about you, education and career, family, lifestyle and partner preferences) and all the photos your settings allow.",
+            "Other members never see your email address or exact date of birth on your profile page. Your mobile number is shown only as described under contact numbers below.",
             "You can hide your profile at any time from Account Settings. Hidden profiles do not appear in matches and cannot receive new interests.",
             "You choose who can see your photos: all members, or only members whose interest you have accepted. Photos are reviewed before they are shown, and are delivered through links that stop working after a short time.",
             "Your annual income is hidden from other members unless you choose to show it.",
@@ -157,9 +158,9 @@ export const privacySections: LegalSection[] = [
           include information you are comfortable sharing with people you have not yet met.
         </P>
         <P>
-          Some membership packages describe access to members&apos; contact numbers. That feature is not available
-          yet. When it is introduced, we will update this policy to explain exactly when your contact details can be
-          shared and how your consent and privacy settings apply.
+          Your mobile number is hidden unless you choose to share it with paid members in your privacy settings. If
+          you do, only members whose current package includes contact access can view it, and each view counts toward
+          their package&apos;s limit. Free members never see it, and you can stop sharing at any time.
         </P>
       </>
     ),

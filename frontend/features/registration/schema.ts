@@ -1,11 +1,15 @@
+import type { CountryCode } from "libphonenumber-js";
 import { z } from "zod";
 
-import { emailField, newPasswordField } from "@/features/auth/schema";
+import { emailField, invalidMobileMessage, mobileFields, toMobileE164 } from "@/features/auth/schema";
 
 /**
- * Member registration (the hero quick-registration form). Creates the account
- * (email, password, mobile) and a draft profile (created_for, gender, name,
- * date of birth) through POST /auth/register/. The API checks everything again.
+ * Member registration (the hero quick-registration form). POST /auth/register/
+ * sends a code by SMS to the mobile number; the account and draft profile
+ * (created_for, gender, name, date of birth) are created once that code is
+ * entered. No password: members sign in with an SMS code. Email is required:
+ * payment receipts are sent there.
+ * The API checks everything again.
  */
 
 const createdForValues = ["self", "son", "daughter", "sibling", "relative"] as const;
@@ -51,19 +55,24 @@ const fields = z.object({
   dateOfBirth: z.iso
     .date({ error: "Enter the date of birth." })
     .refine((value) => ageOn(value) <= MAX_AGE, "Check the date of birth."),
-  mobile: z
-    .string()
-    .transform((value) => value.replace(/[\s-]/g, ""))
-    .pipe(z.string().regex(/^[6-9]\d{9}$/, "Enter a valid 10-digit Indian mobile number.")),
+  country: mobileFields.country,
+  mobile: mobileFields.phone,
   email: emailField,
-  // One password field: the form offers show/hide instead of a confirmation box.
-  password: newPasswordField,
   acceptTerms: z.literal(true, { error: "Please accept the terms and privacy policy." }),
 });
 
 const ageCheckInputs = fields.pick({ gender: true, dateOfBirth: true });
 
-export const quickRegistrationSchema = fields.refine(
+const mobileCheckInputs = fields.pick({ country: true, mobile: true });
+
+export const quickRegistrationSchema = fields
+  .refine(({ country, mobile }) => toMobileE164(mobile, country as CountryCode) !== null, {
+    path: ["mobile"],
+    error: (issue) => invalidMobileMessage((issue.input as { country: CountryCode }).country),
+    // Run as soon as the country and number are filled in, even if other fields still have errors.
+    when: (payload) => mobileCheckInputs.safeParse(payload.value).success,
+  })
+  .refine(
   (data) => ageOn(data.dateOfBirth) >= MIN_AGE[data.gender],
   {
     path: ["dateOfBirth"],

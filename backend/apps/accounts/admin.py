@@ -13,18 +13,18 @@ from .models import User
 PRIVILEGE_FIELDS = ["is_staff", "is_superuser", "groups", "user_permissions"]
 
 
-class EmailVerifiedFilter(admin.SimpleListFilter):
-    title = "email verified"
-    parameter_name = "email_verified"
+class PhoneVerifiedFilter(admin.SimpleListFilter):
+    title = "mobile verified"
+    parameter_name = "phone_verified"
 
     def lookups(self, request, model_admin):
         return [("yes", "Verified"), ("no", "Not verified")]
 
     def queryset(self, request, queryset):
         if self.value() == "yes":
-            return queryset.exclude(email_verified_at=None)
+            return queryset.exclude(phone_verified_at=None)
         if self.value() == "no":
-            return queryset.filter(email_verified_at=None)
+            return queryset.filter(phone_verified_at=None)
         return queryset
 
 
@@ -35,11 +35,11 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
     change_password_form = AdminPasswordChangeForm
     ordering = ["-date_joined"]
     list_display = [
-        "email", "matrimony_id", "phone_number", "full_name", "role", "email_verified", "is_active", "date_joined",
+        "phone_number", "matrimony_id", "email", "full_name", "role", "phone_verified", "is_active", "date_joined",
     ]
-    list_filter = ["role", EmailVerifiedFilter, "is_active", "is_staff"]
+    list_filter = ["role", PhoneVerifiedFilter, "is_active", "is_staff"]
     list_select_related = ["profile"]
-    # Members are easiest to find by Matrimony ID, name or email.
+    # Members are easiest to find by Matrimony ID, mobile number, name or email.
     search_fields = ["email", "phone_number", "first_name", "last_name", "profile__profile_code", "profile__display_name"]
     search_help_text = "Search by email, mobile number, name or Matrimony ID."
     readonly_fields = ["public_id", "matrimony_id", "last_login", "date_joined"]
@@ -48,7 +48,7 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
     fieldsets = [
         (None, {"fields": ["public_id", "email", "phone_number", "password"]}),
         ("Personal info", {"fields": ["first_name", "last_name", "matrimony_id"]}),
-        ("Verification", {"fields": ["email_verified_at", "phone_verified_at"]}),
+        ("Verification", {"fields": ["phone_verified_at", "email_verified_at"]}),
         ("Access", {"fields": ["role", "is_active", *PRIVILEGE_FIELDS]}),
         ("Dates", {"fields": ["last_login", "date_joined"]}),
     ]
@@ -57,8 +57,8 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
             None,
             {
                 "classes": ["wide"],
-                # "usable_password" lets staff create a member without a password: they set one
-                # themselves with "Forgot password?" on the website.
+                # Members sign in with an SMS code to their mobile number: create them without a
+                # password ("usable_password" off). Staff need an email address and a password.
                 "fields": ["email", "phone_number", "role", "usable_password", "password1", "password2"],
             },
         ),
@@ -75,13 +75,13 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
     def get_readonly_fields(self, request, obj=None):
         fields = list(super().get_readonly_fields(request, obj))
         if not request.user.is_superuser:
-            # Verifying an address is the member's job (the emailed link); only superusers may override it.
-            fields += [*PRIVILEGE_FIELDS, "email_verified_at"]
+            # Verifying a number is the member's job (an SMS code); only superusers may override it.
+            fields += [*PRIVILEGE_FIELDS, "phone_verified_at", "email_verified_at"]
         return fields
 
-    @admin.display(description="Email verified", boolean=True, ordering="email_verified_at")
-    def email_verified(self, user):
-        return user.email_verified_at is not None
+    @admin.display(description="Mobile verified", boolean=True, ordering="phone_verified_at")
+    def phone_verified(self, user):
+        return user.phone_verified_at is not None
 
     def has_change_permission(self, request, obj=None):
         # Only superusers may edit a superuser's account (password, email, flags).

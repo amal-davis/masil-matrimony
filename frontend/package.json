@@ -10,7 +10,8 @@
     "typecheck": "next typegen && tsc --noEmit",
     "flags": "node scripts/copy-flags.mjs",
     "preview:build": "node scripts/dashboard-preview.mjs build",
-    "preview:start": "node scripts/dashboard-preview.mjs start"
+    "preview:start": "node scripts/dashboard-preview.mjs start",
+    "test": "vitest run"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
@@ -23,13 +24,19 @@
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4.7.0",
     "country-flag-icons": "^1.6.20",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
+    "jsdom": "^26.1.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.4"
   }
 }

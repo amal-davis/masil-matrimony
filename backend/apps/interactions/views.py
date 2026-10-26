@@ -4,7 +4,7 @@ from rest_framework.response import Response
 
 from apps.profiles.models import Profile
 from apps.profiles.serializers import card_data
-from apps.profiles.views import MemberAPIView, own_profile, paginated
+from apps.profiles.views import MemberAPIView, own_profile, paginated, private_response
 
 from . import services
 from .models import Interest, InterestStatus, Shortlist
@@ -152,7 +152,7 @@ class ContactNumberView(MemberAPIView):
             profile = services.discoverable_profile(profile_code)
         except services.InteractionError as error:
             return error_response(error)
-        return Response(services.contact_status(viewer, profile))
+        return private_response(services.contact_status(viewer, profile))
 
     @extend_schema(request=None, tags=["contact"])
     def post(self, request, profile_code):
@@ -161,4 +161,4 @@ class ContactNumberView(MemberAPIView):
             summary, phone_number = services.view_contact(viewer, profile_code)
         except services.InteractionError as error:
             return error_response(error)
-        return Response({**summary, "phone_number": phone_number})
+        return private_response({**summary, "phone_number": phone_number})

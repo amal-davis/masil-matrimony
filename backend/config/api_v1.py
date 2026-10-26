@@ -13,6 +13,8 @@ urlpatterns = [
     path("profiles/", include("apps.profiles.urls")),
     path("", include("apps.interactions.urls")),
     path("notifications/", include("apps.notifications.urls")),
+    path("payments/", include("apps.payments.urls")),
+    path("success-stories/", include("apps.website_content.urls")),
     path("memberships/packages/", PackageListView.as_view(), name="membership-packages"),
     path("memberships/me/", MyMembershipView.as_view(), name="membership-me"),
     path("dashboard/summary/", DashboardSummaryView.as_view(), name="dashboard-summary"),

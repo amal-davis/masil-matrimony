@@ -17,6 +17,12 @@ from .base import (
     FRONTEND_URL,
     MSG91_AUTH_KEY,
     MSG91_OTP_TEMPLATE_ID,
+    BILLING_SELLER_ADDRESS,
+    BILLING_SELLER_NAME,
+    RAZORPAY_KEY_ID,
+    RAZORPAY_KEY_SECRET,
+    RAZORPAY_MODE,
+    RAZORPAY_WEBHOOK_SECRET,
     SECRET_KEY,
     SMS_PROVIDER,
 )
@@ -47,14 +53,14 @@ for _name, _origins in (
             )
 
 # The development and test SMS mocks must never handle real login codes.
-# An empty SMS_PROVIDER is allowed: SMS login then answers 503 until one is configured.
+# An empty SMS_PROVIDER is allowed, but members can then neither register nor sign in:
+# both answer 503 until a provider is configured.
 if SMS_PROVIDER in ("console", "locmem"):
     raise ImproperlyConfigured(f"SMS_PROVIDER={SMS_PROVIDER!r} is for development and tests only.")
 if SMS_PROVIDER == "msg91" and not (MSG91_AUTH_KEY and MSG91_OTP_TEMPLATE_ID):
     raise ImproperlyConfigured("SMS_PROVIDER=msg91 requires MSG91_AUTH_KEY and MSG91_OTP_TEMPLATE_ID.")
 
-# Likewise for email, which carries password-reset links. An empty EMAIL_PROVIDER is
-# allowed: password reset then answers 503 until SMTP is configured.
+# Likewise for email. An empty EMAIL_PROVIDER is allowed: nothing is emailed.
 if EMAIL_PROVIDER in ("console", "locmem"):
     raise ImproperlyConfigured(f"EMAIL_PROVIDER={EMAIL_PROVIDER!r} is for development and tests only.")
 if EMAIL_PROVIDER == "smtp":
@@ -62,6 +68,23 @@ if EMAIL_PROVIDER == "smtp":
         raise ImproperlyConfigured("EMAIL_PROVIDER=smtp requires EMAIL_HOST and DEFAULT_FROM_EMAIL.")
     if not FRONTEND_URL.startswith("https://"):
         raise ImproperlyConfigured("FRONTEND_URL must be the site's https:// address for links in emails.")
+
+# Live payments only with everything a paid customer is owed: webhook verification, a
+# receipt that names the seller, and a working email to send it.
+if RAZORPAY_MODE == "live":
+    _missing = [
+        name for name, value in (
+            ("RAZORPAY_KEY_ID", RAZORPAY_KEY_ID),
+            ("RAZORPAY_KEY_SECRET", RAZORPAY_KEY_SECRET),
+            ("RAZORPAY_WEBHOOK_SECRET", RAZORPAY_WEBHOOK_SECRET),
+            ("BILLING_SELLER_NAME", BILLING_SELLER_NAME),
+            ("BILLING_SELLER_ADDRESS", BILLING_SELLER_ADDRESS),
+        ) if not value
+    ]
+    if EMAIL_PROVIDER != "smtp":
+        _missing.append("EMAIL_PROVIDER=smtp")
+    if _missing:
+        raise ImproperlyConfigured(f"RAZORPAY_MODE=live requires: {', '.join(_missing)}.")
 
 # --- HTTPS ---------------------------------------------------------------
 SECURE_SSL_REDIRECT = env.bool("DJANGO_SECURE_SSL_REDIRECT", default=True)
