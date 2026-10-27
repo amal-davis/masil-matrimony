@@ -1,0 +1,21 @@
+{% extends "admin/base_site.html" %}
+{% load unfold %}
+
+{% comment %}Matchmaking Management > Generate matches (MatchRecommendationAdmin.generate_view).{% endcomment %}
+
+{% block content %}
+    <form method="post" class="border border-base-200 rounded-default p-4 dark:border-base-800 flex flex-col gap-4 max-w-2xl">
+        {% csrf_token %}
+        <p>Recommendations are calculated from each member's current partner preferences and the profiles' current details. Running again never duplicates anything.</p>
+        <label class="flex items-start gap-2"><input type="radio" name="scope" value="ids" checked>
+            <span>These members (Matrimony IDs, separated by spaces or commas):
+                <textarea name="codes" rows="2" class="mt-1 w-full border rounded px-2 py-1"></textarea></span></label>
+        <label class="flex items-start gap-2"><input type="radio" name="scope" value="stale">
+            <span>Members with recommendations that need re-evaluation ({{ stale }})</span></label>
+        <label class="flex items-start gap-2"><input type="radio" name="scope" value="all">
+            <span>Every eligible member ({{ eligible }}).
+                <span class="block mt-1"><input type="checkbox" name="confirm_all" value="yes" id="confirm_all">
+                <label for="confirm_all">Yes, re-evaluate all of them now (for large runs, the generate_matches command is better)</label></span></span></label>
+        <div>{% component "unfold/components/button.html" with submit=1 %}Generate{% endcomponent %}</div>
+    </form>
+{% endblock %}

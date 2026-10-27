@@ -68,6 +68,84 @@
   }
 }
 
+/*
+ * Dual-thumb range slider (components/ui/range-slider.tsx): two native range
+ * inputs stacked on one track that the component draws. The inputs ignore the
+ * pointer and only their thumbs take it, so either thumb can be dragged.
+ * Thumb rules are repeated per engine: one unknown pseudo-element drops a whole rule.
+ * Unlayered, like the keyframes below: Tailwind drops plain rules inside @layer components.
+ */
+.range-input {
+  appearance: none;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.range-input:focus-visible {
+  outline: none;
+}
+
+.range-input::-webkit-slider-runnable-track {
+  background: transparent;
+}
+
+.range-input::-moz-range-track,
+.range-input::-moz-range-progress {
+  background: transparent;
+}
+
+.range-input::-webkit-slider-thumb {
+  appearance: none;
+  pointer-events: auto;
+  box-sizing: border-box;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 2px solid var(--color-wine-600);
+  border-radius: 9999px;
+  background: white;
+  box-shadow: 0 1px 3px rgb(36 26 28 / 0.25);
+  cursor: grab;
+}
+
+.range-input::-moz-range-thumb {
+  pointer-events: auto;
+  box-sizing: border-box;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 2px solid var(--color-wine-600);
+  border-radius: 9999px;
+  background: white;
+  box-shadow: 0 1px 3px rgb(36 26 28 / 0.25);
+  cursor: grab;
+}
+
+.range-input:active::-webkit-slider-thumb {
+  cursor: grabbing;
+}
+
+.range-input:active::-moz-range-thumb {
+  cursor: grabbing;
+}
+
+.range-input:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--color-wine-600);
+  outline-offset: 2px;
+}
+
+.range-input:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--color-wine-600);
+  outline-offset: 2px;
+}
+
+.range-input[aria-invalid="true"]::-webkit-slider-thumb {
+  border-color: var(--color-danger);
+}
+
+.range-input[aria-invalid="true"]::-moz-range-thumb {
+  border-color: var(--color-danger);
+}
+
 /* Homepage hero slider */
 @keyframes hero-progress {
   from {

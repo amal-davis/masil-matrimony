@@ -1,0 +1,106 @@
+{% extends "admin/base_site.html" %}
+
+{% comment %}
+    Membership Purchases > Summary (PurchaseAdmin.summary_view). Every figure is a database
+    aggregate (apps/payments/reporting.py documents the counting rules). Money cards need the
+    "Can see purchase amounts and revenue figures" permission.
+{% endcomment %}
+
+{% block content %}
+    <div class="flex flex-col gap-6">
+        <p class="text-sm">
+            One purchase is one Razorpay order for one package: payment retries and repeated webhooks are never
+            counted twice. “Paid” means verified with Razorpay and captured for the exact amount.
+            <a class="underline text-primary-600" href="{{ changelist }}">Open the purchase list</a>
+        </p>
+
+        <section aria-label="Purchases" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <a href="{{ changelist }}" class="border border-base-200 rounded-default p-4 dark:border-base-800">
+                <p class="text-sm">Purchase records</p><p class="text-2xl font-semibold">{{ figures.total }}</p>
+                <p class="text-xs">Every order started, whatever happened next</p>
+            </a>
+            <a href="{{ changelist }}?status__exact=paid" class="border border-base-200 rounded-default p-4 dark:border-base-800">
+                <p class="text-sm">Paid purchases</p><p class="text-2xl font-semibold">{{ figures.paid }}</p>
+                <p class="text-xs">Verified with Razorpay</p>
+            </a>
+            <a href="{{ changelist }}?membership=active" class="border border-base-200 rounded-default p-4 dark:border-base-800">
+                <p class="text-sm">Active paid memberships</p><p class="text-2xl font-semibold">{{ figures.active }}</p>
+                <p class="text-xs">From online purchases; {{ figures.upcoming }} more start later</p>
+            </a>
+            <a href="{{ changelist }}?membership=expired" class="border border-base-200 rounded-default p-4 dark:border-base-800">
+                <p class="text-sm">Expired memberships</p><p class="text-2xl font-semibold">{{ figures.expired }}</p>
+                <p class="text-xs">Paid, validity period over</p>
+            </a>
+            <a href="{{ changelist }}?membership=pending_payment" class="border border-base-200 rounded-default p-4 dark:border-base-800">
+                <p class="text-sm">Pending payments</p><p class="text-2xl font-semibold">{{ figures.pending }}</p>
+                <p class="text-xs">Awaiting payment, or authorised but not captured</p>
+            </a>
+            <a href="{{ changelist }}?membership=payment_failed" class="border border-base-200 rounded-default p-4 dark:border-base-800">
+                <p class="text-sm">Failed payments</p><p class="text-2xl font-semibold">{{ figures.failed }}</p>
+                <p class="text-xs">Latest attempt failed, or the order couldn't be created</p>
+            </a>
+            <a href="{{ changelist }}?membership=cancelled" class="border border-base-200 rounded-default p-4 dark:border-base-800">
+                <p class="text-sm">Cancelled memberships</p><p class="text-2xl font-semibold">{{ figures.cancelled }}</p>
+                <p class="text-xs">Paid, then cancelled by staff. Razorpay orders themselves are never cancelled.</p>
+            </a>
+            <a href="{{ changelist }}?refund_status__exact=full" class="border border-base-200 rounded-default p-4 dark:border-base-800">
+                <p class="text-sm">Refunded payments</p><p class="text-2xl font-semibold">{{ figures.refunded }}</p>
+                <p class="text-xs">Fully or partly, as reported by Razorpay</p>
+            </a>
+            <a href="{{ changelist }}?status__exact=needs_review" class="border border-base-200 rounded-default p-4 dark:border-base-800">
+                <p class="text-sm">Payments needing review</p><p class="text-2xl font-semibold">{{ figures.needs_review }}</p>
+                <p class="text-xs">Captured or refunded payments that don't match their order</p>
+            </a>
+        </section>
+
+        {% if financials %}
+            <section aria-label="Revenue" class="flex flex-col gap-3">
+                <h2 class="font-semibold">Revenue (live payments, fee + GST)</h2>
+                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <div class="border border-base-200 rounded-default p-4 dark:border-base-800">
+                        <p class="text-sm">Gross collected</p><p class="text-2xl font-semibold">{{ money.gross }}</p>
+                        <p class="text-xs">Totals of all paid live purchases, of which GST {{ money.gst }}</p>
+                    </div>
+                    <div class="border border-base-200 rounded-default p-4 dark:border-base-800">
+                        <p class="text-sm">Refunded</p><p class="text-2xl font-semibold">{{ money.refunded_amount }}</p>
+                        <p class="text-xs">As reported by Razorpay</p>
+                    </div>
+                    <div class="border border-base-200 rounded-default p-4 dark:border-base-800">
+                        <p class="text-sm">Net collected</p><p class="text-2xl font-semibold">{{ money.net }}</p>
+                        <p class="text-xs">Gross minus refunds; before Razorpay's fees</p>
+                    </div>
+                    <div class="border border-base-200 rounded-default p-4 dark:border-base-800">
+                        <p class="text-sm">Gross this month</p><p class="text-2xl font-semibold">{{ money.gross_month }}</p>
+                        <p class="text-xs">Paid since {{ month|date:"j M Y" }} (India time)</p>
+                    </div>
+                </div>
+                {% if figures.test_paid %}
+                    <p class="text-sm">Test-mode payments (no real money, not counted above): {{ figures.test_paid }} paid, {{ money.test_gross }}.</p>
+                {% endif %}
+            </section>
+        {% endif %}
+
+        <section aria-label="By package">
+            <h2 class="font-semibold mb-2">By package</h2>
+            <table class="w-full text-sm border border-base-200 dark:border-base-800">
+                <thead>
+                    <tr class="text-left">
+                        <th class="p-2">Package</th><th class="p-2">Purchases</th><th class="p-2">Paid</th>
+                        <th class="p-2">Active memberships</th>{% if financials %}<th class="p-2">Gross collected (live)</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in packages %}
+                        <tr class="border-t border-base-200 dark:border-base-800">
+                            <td class="p-2"><a class="underline" href="{{ changelist }}?package_code={{ row.package_code }}">{{ row.package_name }}</a></td>
+                            <td class="p-2">{{ row.purchases }}</td><td class="p-2">{{ row.paid }}</td><td class="p-2">{{ row.active }}</td>
+                            {% if financials %}<td class="p-2">{{ row.gross_display }}</td>{% endif %}
+                        </tr>
+                    {% empty %}
+                        <tr><td class="p-2" colspan="5">No purchases yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+    </div>
+{% endblock %}

@@ -38,10 +38,11 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 
+from apps.memberships import assistance
 from apps.memberships.models import MembershipPackage, Subscription, SubscriptionStatus, add_months
 
 from . import razorpay_api
-from .models import Purchase, PurchaseStatus, RazorpayPayment
+from .models import EventSource, Purchase, PurchaseEvent, PurchaseStatus, RazorpayPayment, RefundStatus
 from .razorpay_api import RazorpayError
 
 logger = logging.getLogger(__name__)
@@ -224,10 +225,12 @@ def start_checkout(user, package_code: str) -> Purchase:
             purchase.status = PurchaseStatus.ORDER_FAILED
             purchase.failure_reason = "The payment couldn't be started."
             purchase.save(update_fields=["status", "failure_reason", "updated_at"])
+            _history(purchase, EventSource.ORDER, "Razorpay order couldn't be created.")
             error = OrderFailed()
         else:
             purchase.razorpay_order_id = order["id"]
             purchase.save(update_fields=["razorpay_order_id", "updated_at"])
+            _history(purchase, EventSource.ORDER, f"Razorpay order {order['id']}")
             logger.info("Purchase %s: Razorpay order %s created", purchase.reference, order["id"])
     if error:
         raise error
@@ -267,6 +270,7 @@ def _record_payment(purchase: Purchase, item: dict) -> None:
             "amount_subunits": int(item.get("amount") or 0),
             "currency": str(item.get("currency", ""))[:3],
             "method": str(item.get("method") or "")[:20],
+            "amount_refunded_subunits": int(item.get("amount_refunded") or 0),
             "error_code": str(item.get("error_code") or "")[:60],
             "error_description": str(item.get("error_description") or "")[:255],
             "razorpay_created_at": _timestamp(item.get("created_at")),
@@ -295,14 +299,34 @@ def _activate(purchase: Purchase, now) -> Subscription:
         staff_note=f"Paid online, purchase {purchase.reference}.",
     )
     subscription.save()
+    # Platinum: the assisted-matchmaking case starts with the membership.
+    assistance.open_service_case(subscription)
     return subscription
 
 
-def reconcile(purchase: Purchase) -> Purchase:
+def _history(purchase: Purchase, source: str, note: str = "", staff=None) -> None:
+    PurchaseEvent.objects.create(
+        purchase=purchase, status=purchase.status, refund_status=purchase.refund_status, source=source,
+        note=note[:255], staff=staff,
+    )
+
+
+def _refund_of(purchase: Purchase, item: dict) -> tuple[int, str]:
+    """Paise refunded on the paid payment, and the resulting refund status, as Razorpay reports them."""
+    refunded = int(item.get("amount_refunded") or 0)
+    if item.get("status") == "refunded" and not refunded:
+        refunded = int(item.get("amount") or 0)
+    if refunded <= 0:
+        return 0, RefundStatus.NONE
+    return refunded, RefundStatus.FULL if refunded >= purchase.amount_subunits else RefundStatus.PARTIAL
+
+
+def reconcile(purchase: Purchase, source: str = EventSource.SYSTEM, staff=None) -> Purchase:
     """
     Bring the purchase up to date with Razorpay's own record of the order's
     payments. Raises RazorpayError if Razorpay can't be asked (nothing changes).
-    Safe to call any number of times, from any path.
+    Safe to call any number of times, from any path. Each change of payment or
+    refund status is kept in the purchase's history, with what reported it.
     """
     if not purchase.razorpay_order_id:
         return purchase
@@ -316,6 +340,7 @@ def reconcile(purchase: Purchase) -> Purchase:
             _record_payment(locked, item)
         locked.last_checked_at = timezone.now()
         fields = ["last_checked_at", "updated_at"]
+        before = (locked.status, locked.refund_status, locked.refunded_amount_subunits)
 
         if locked.status != PurchaseStatus.PAID:
             captured = [item for item in ours if item.get("status") == "captured"]
@@ -346,7 +371,18 @@ def reconcile(purchase: Purchase) -> Purchase:
                 locked.status = PurchaseStatus.FAILED
                 locked.failure_reason = str(newest.get("error_description") or "The payment didn't go through.")[:255]
                 fields += ["status", "failure_reason"]
+        if locked.status == PurchaseStatus.PAID:
+            paid = next((item for item in ours if item.get("id") == locked.razorpay_payment_id), None)
+            if paid is not None:
+                refunded, refund_status = _refund_of(locked, paid)
+                if (refunded, refund_status) != (locked.refunded_amount_subunits, locked.refund_status):
+                    locked.refunded_amount_subunits, locked.refund_status = refunded, refund_status
+                    locked.refunded_at = locked.refunded_at or timezone.now()
+                    fields += ["refunded_amount_subunits", "refund_status", "refunded_at"]
+                    logger.info("Purchase %s: refund recorded (%s)", locked.reference, refund_status)
         locked.save(update_fields=fields)
+        if (locked.status, locked.refund_status, locked.refunded_amount_subunits) != before:
+            _history(locked, source, f"Payment {locked.razorpay_payment_id}" if locked.razorpay_payment_id else "", staff)
 
     if paid_now:
         from .receipts import fulfil
@@ -367,7 +403,7 @@ def verify_checkout(purchase: Purchase, order_id: str, payment_id: str, signatur
     ):
         logger.warning("Purchase %s: checkout callback with an invalid signature or order", purchase.reference)
         raise InvalidCallback()
-    return reconcile(purchase)
+    return reconcile(purchase, EventSource.CHECKOUT)
 
 
 class InvalidCallback(CheckoutError):

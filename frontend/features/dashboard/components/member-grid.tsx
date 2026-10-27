@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 import { formatMemberLocation } from "../format";
 import type { MatchInfo, MemberCard as MemberCardData } from "../types";
 import { MemberPhoto } from "./member-photo";
+import { VerifiedBadge } from "./verified-badge";
+import { HideMatchButton } from "./hide-match-button";
 import { ShortlistButton } from "./shortlist-button";
 
 function Fact({ icon, children }: { icon: ReactNode; children: ReactNode }) {
@@ -94,6 +96,7 @@ export function MemberProfileCard({
           <Link href={href} className="rounded-sm hover:text-wine-600 focus-visible:outline-wine-600">
             {member.display_name}
           </Link>
+          {member.verified && <VerifiedBadge className="ml-2 align-middle" />}
         </h3>
         <p className="mt-0.5 text-sm text-ink">{vitals}</p>
         <p className="text-xs tracking-wide text-ink-muted">
@@ -136,6 +139,7 @@ export function MemberProfileCard({
           <span className="sr-only"> of {member.display_name}</span>
         </Link>
         <ShortlistButton profileCode={member.profile_code} name={member.display_name} shortlisted={shortlisted} className="flex-1" />
+        {match && !compact && <HideMatchButton profileCode={member.profile_code} name={member.display_name} className="flex-none" />}
       </div>
     </article>
   );

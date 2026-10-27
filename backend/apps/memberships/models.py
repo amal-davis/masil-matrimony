@@ -28,11 +28,21 @@ from .plans import PackageCode, PlanCode
 
 
 def add_months(start: datetime, months: int) -> datetime:
-    month = start.month - 1 + months
-    year = start.year + month // 12
+    """
+    The same day and time `months` calendar months later, counted in the site's
+    time zone (TIME_ZONE, India), not UTC: 10:00 on 30 November plus three
+    months is 10:00 on 28 February. A day the end month doesn't have becomes
+    its last day (31 January + 1 month = 28 or 29 February).
+    """
+    aware = timezone.is_aware(start)
+    local = timezone.localtime(start) if aware else start
+    month = local.month - 1 + months
+    year = local.year + month // 12
     month = month % 12 + 1
-    day = min(start.day, calendar.monthrange(year, month)[1])
-    return start.replace(year=year, month=month, day=day)
+    day = min(local.day, calendar.monthrange(year, month)[1])
+    end = local.replace(year=year, month=month, day=day)
+    # Re-attach the zone for the new date (DST-safe), then back to the caller's zone.
+    return timezone.make_aware(end.replace(tzinfo=None)).astimezone(start.tzinfo) if aware else end
 
 
 def configured_gst_rate() -> Decimal | None:
@@ -280,3 +290,372 @@ class Subscription(TimeStampedModel):
         self.starts_at = starts_at or self.starts_at or timezone.now()
         self.ends_at = add_months(self.starts_at, self.validity_months)
         self.activated_by = by
+
+
+class AssistanceStatus(models.TextChoices):
+    # Waiting for staff to assign a matchmaker.
+    REQUESTED = "requested", "Awaiting assignment"
+    ASSIGNED = "assigned", "Matchmaker assigned"
+    IN_PROGRESS = "in_progress", "In progress"
+    AWAITING_MEMBER = "awaiting_member", "Awaiting member response"
+    FOLLOW_UP = "follow_up", "Follow-up scheduled"
+    ON_HOLD = "on_hold", "On hold"
+    COMPLETED = "completed", "Completed"
+    # Staff couldn't offer the service for this request.
+    UNAVAILABLE = "unavailable", "Unavailable"
+    CANCELLED = "cancelled", "Cancelled"
+    # Closed by staff because the membership's service period ended.
+    EXPIRED = "expired", "Expired"
+    # Stages of the Royal service (apps.memberships.assistance.ROYAL_STATUSES).
+    REQUIREMENTS = "requirements", "Requirements gathering"
+    CURATION = "curation", "Profile curation"
+    AWAITING_REVIEW = "awaiting_review", "Awaiting member review"
+    FAMILY = "family", "Family coordination"
+    CONSULTATION_REQUESTED = "consult_requested", "Consultation requested"
+    CONSULTATION_SCHEDULED = "consult_scheduled", "Consultation scheduled"
+
+
+OPEN_ASSISTANCE_STATUSES = (
+    AssistanceStatus.REQUESTED, AssistanceStatus.ASSIGNED, AssistanceStatus.IN_PROGRESS,
+    AssistanceStatus.AWAITING_MEMBER, AssistanceStatus.FOLLOW_UP, AssistanceStatus.ON_HOLD,
+    AssistanceStatus.REQUIREMENTS, AssistanceStatus.CURATION, AssistanceStatus.AWAITING_REVIEW,
+    AssistanceStatus.FAMILY, AssistanceStatus.CONSULTATION_REQUESTED, AssistanceStatus.CONSULTATION_SCHEDULED,
+)
+# Statuses that only make sense with a matchmaker assigned.
+ASSIGNED_STATUSES = (
+    AssistanceStatus.ASSIGNED, AssistanceStatus.IN_PROGRESS, AssistanceStatus.AWAITING_MEMBER,
+    AssistanceStatus.FOLLOW_UP, AssistanceStatus.COMPLETED, AssistanceStatus.REQUIREMENTS,
+    AssistanceStatus.CURATION, AssistanceStatus.AWAITING_REVIEW, AssistanceStatus.FAMILY,
+    AssistanceStatus.CONSULTATION_REQUESTED, AssistanceStatus.CONSULTATION_SCHEDULED,
+)
+
+
+class AssistanceKind(models.TextChoices):
+    # A Gold or Diamond member asked for help (apps.memberships.assistance.request_assistance).
+    REQUEST = "request", "Assistance request"
+    # The Platinum service itself, opened when the membership is activated (open_service_case).
+    SERVICE = "service", "Assisted matchmaking case"
+
+
+class AssistanceRequest(TimeStampedModel):
+    """
+    A matchmaking-assistance case (apps.memberships.assistance): a Gold or Diamond
+    member's request, or a Platinum member's assisted-matchmaking service.
+    """
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    kind = models.CharField(max_length=8, choices=AssistanceKind.choices, default=AssistanceKind.REQUEST, db_index=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="assistance_requests")
+    # The membership that included the service. A service case covers that membership's period.
+    subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT, related_name="assistance_requests")
+    status = models.CharField(
+        max_length=17, choices=AssistanceStatus.choices, default=AssistanceStatus.REQUESTED, db_index=True
+    )
+    member_note = models.TextField(
+        max_length=1000, blank=True,
+        help_text="What the member would like help with: their own words (a service-case member can update them).",
+    )
+    member_note_updated_at = models.DateTimeField(null=True, blank=True)
+    # Staff recommendations, kept apart from the member's own requirements. Both shown to the member.
+    service_plan = models.TextField(
+        blank=True, help_text="The agreed service plan and priorities. Shown to the member."
+    )
+    next_steps = models.TextField(blank=True, help_text="Agreed next steps. Shown to the member.")
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="assigned_assistance",
+        limit_choices_to={"is_staff": True, "is_active": True},
+        help_text="The matchmaker handling this case: an active staff account allowed to handle cases.",
+    )
+    assigned_at = models.DateTimeField(null=True, blank=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    member_message = models.CharField(
+        max_length=300, blank=True, help_text="Shown to the member, e.g. why the service is unavailable."
+    )
+    staff_note = models.TextField(blank=True, help_text="Internal; never shown to the member.")
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["user", "status"])]
+        permissions = [
+            ("assign_assistancerequest", "Can see every matchmaking case and assign matchmakers"),
+        ]
+        verbose_name = "matchmaking case"
+
+    def __str__(self):
+        return f"{self.get_kind_display()} for {self.user}"
+
+    @property
+    def is_open(self) -> bool:
+        return self.status in OPEN_ASSISTANCE_STATUSES
+
+    @property
+    def service_active(self) -> bool:
+        """The membership that includes the service is current (active and inside its period)."""
+        return self.subscription.is_current
+
+
+class AssistanceEvent(models.Model):
+    """One status or assignment change of an AssistanceRequest. Append-only."""
+
+    request = models.ForeignKey(AssistanceRequest, on_delete=models.CASCADE, related_name="events")
+    status = models.CharField(max_length=17, choices=AssistanceStatus.choices)
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+    )
+    # Who made the change: the member (when asking) or a staff member.
+    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+
+    def __str__(self):
+        return f"{self.get_status_display()} at {self.created_at:%d %b %Y %H:%M}"
+
+
+
+class AssistanceNote(models.Model):
+    """A matchmaker's note on a case: internal, or a progress update the member sees."""
+
+    request = models.ForeignKey(AssistanceRequest, on_delete=models.CASCADE, related_name="notes")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    body = models.TextField(max_length=2000)
+    visible_to_member = models.BooleanField(
+        default=False, help_text="Show this to the member as a progress update. Unticked notes stay internal."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+        verbose_name = "case note"
+
+    def __str__(self):
+        return "Progress update" if self.visible_to_member else "Internal note"
+
+
+class FollowUpStatus(models.TextChoices):
+    SCHEDULED = "scheduled", "Scheduled"
+    DONE = "done", "Done"
+    CANCELLED = "cancelled", "Cancelled"
+
+
+class AssistanceFollowUp(TimeStampedModel):
+    """A follow-up action on a case, as recorded by staff."""
+
+    request = models.ForeignKey(AssistanceRequest, on_delete=models.CASCADE, related_name="follow_ups")
+    action = models.CharField(max_length=200, help_text="What will be done. The member sees this when shown to them.")
+    due_on = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=10, choices=FollowUpStatus.choices, default=FollowUpStatus.SCHEDULED)
+    awaiting_member = models.BooleanField(default=False, help_text="Waiting for the member's response.")
+    outcome = models.TextField(blank=True, help_text="Internal: what happened.")
+    visible_to_member = models.BooleanField(default=False, help_text="Show the action, date and status to the member.")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["due_on", "pk"]
+        verbose_name = "follow-up"
+
+    def __str__(self):
+        return self.action
+
+
+class CandidateResponse(models.TextChoices):
+    PENDING = "pending", "No response yet"
+    INTERESTED = "interested", "Interested"
+    NOT_INTERESTED = "not_interested", "Not interested"
+
+
+class AssistanceCandidate(TimeStampedModel):
+    """A profile a matchmaker found for the case member; shown to the member once staff share it."""
+
+    request = models.ForeignKey(AssistanceRequest, on_delete=models.CASCADE, related_name="candidates")
+    profile = models.ForeignKey("profiles.Profile", on_delete=models.CASCADE, related_name="+")
+    added_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    staff_note = models.TextField(blank=True, help_text="Internal; never shown to either member.")
+    shared_with_member = models.BooleanField(default=False, help_text="Show this profile to the member as a suggestion.")
+    shared_at = models.DateTimeField(null=True, blank=True)
+    member_response = models.CharField(
+        max_length=16, choices=CandidateResponse.choices, default=CandidateResponse.PENDING
+    )
+    responded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [models.UniqueConstraint(fields=["request", "profile"], name="unique_case_candidate")]
+        verbose_name = "suggested profile"
+
+    def __str__(self):
+        return f"Suggested profile {self.profile_id}"
+
+
+class ExchangeStatus(models.TextChoices):
+    PENDING = "pending", "Pending consent"
+    # Both members consented: each may now see the other's mobile number.
+    SHARED = "shared", "Shared"
+    # A member declined or withdrew consent before both had agreed.
+    DECLINED = "declined", "Declined"
+    CANCELLED = "cancelled", "Cancelled"
+
+
+class ContactExchange(TimeStampedModel):
+    """
+    A matchmaker-coordinated exchange of mobile numbers between a service case's
+    member and one other member, which happens only once both consent
+    (apps.memberships.assistance). No number is stored here.
+    """
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    request = models.ForeignKey(AssistanceRequest, on_delete=models.PROTECT, related_name="exchanges")
+    other_profile = models.ForeignKey("profiles.Profile", on_delete=models.PROTECT, related_name="+")
+    purpose = models.CharField(max_length=300, help_text="Why the numbers would be shared. Both members see this.")
+    status = models.CharField(max_length=10, choices=ExchangeStatus.choices, default=ExchangeStatus.PENDING, db_index=True)
+    initiated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    shared_at = models.DateTimeField(null=True, blank=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    cancelled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "contact exchange"
+
+    def __str__(self):
+        return f"Contact exchange {self.public_id}"
+
+
+class ConsentDecision(models.TextChoices):
+    PENDING = "pending", "Awaiting decision"
+    GRANTED = "granted", "Consented"
+    DECLINED = "declined", "Declined"
+    WITHDRAWN = "withdrawn", "Withdrawn"
+
+
+class ContactConsent(models.Model):
+    """One member's decision on a ContactExchange, with the exact statement they were shown."""
+
+    exchange = models.ForeignKey(ContactExchange, on_delete=models.CASCADE, related_name="consents")
+    profile = models.ForeignKey("profiles.Profile", on_delete=models.PROTECT, related_name="+")
+    statement = models.TextField()
+    decision = models.CharField(max_length=10, choices=ConsentDecision.choices, default=ConsentDecision.PENDING)
+    decided_at = models.DateTimeField(null=True, blank=True)
+    # When this member was first shown the other member's number (the disclosure record).
+    number_seen_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["pk"]
+        constraints = [models.UniqueConstraint(fields=["exchange", "profile"], name="unique_exchange_consent")]
+
+    def __str__(self):
+        return self.get_decision_display()
+
+
+class ConsultationStatus(models.TextChoices):
+    REQUESTED = "requested", "Requested"
+    # Staff proposed a date and time; not scheduled until the member confirms it.
+    PROPOSED = "proposed", "Time proposed, awaiting your confirmation"
+    SCHEDULED = "scheduled", "Scheduled"
+    COMPLETED = "completed", "Completed"
+    CANCELLED = "cancelled", "Cancelled"
+    # No home visit can be offered (e.g. no staff capacity or coverage for the area).
+    UNAVAILABLE = "unavailable", "Home visit unavailable"
+
+
+OPEN_CONSULTATION_STATUSES = (ConsultationStatus.REQUESTED, ConsultationStatus.PROPOSED, ConsultationStatus.SCHEDULED)
+
+
+class Consultation(TimeStampedModel):
+    """An at-home consultation on a Royal case (apps.memberships.assistance). Never scheduled automatically."""
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    request = models.ForeignKey(AssistanceRequest, on_delete=models.CASCADE, related_name="consultations")
+    status = models.CharField(
+        max_length=12, choices=ConsultationStatus.choices, default=ConsultationStatus.REQUESTED, db_index=True
+    )
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    member_note = models.CharField(max_length=500, blank=True, help_text="Preferred days or times, from the member.")
+    # Restricted: only the case's staff see it; member APIs say only whether one was given.
+    address = models.TextField(max_length=500, blank=True, help_text="Where the visit would take place. Restricted.")
+    scheduled_for = models.DateTimeField(null=True, blank=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    member_message = models.CharField(max_length=300, blank=True, help_text="Shown to the member.")
+    outcome = models.TextField(blank=True, help_text="Internal: what happened at the visit.")
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Consultation ({self.get_status_display()})"
+
+    @property
+    def is_open(self) -> bool:
+        return self.status in OPEN_CONSULTATION_STATUSES
+
+
+class ConsultationEvent(models.Model):
+    """One status change (including each reschedule) of a Consultation. Append-only."""
+
+    consultation = models.ForeignKey(Consultation, on_delete=models.CASCADE, related_name="events")
+    status = models.CharField(max_length=12, choices=ConsultationStatus.choices)
+    scheduled_for = models.DateTimeField(null=True, blank=True)
+    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+
+
+class FamilyPermission(models.TextChoices):
+    PENDING = "pending", "Awaiting the member's permission"
+    GRANTED = "granted", "Permitted"
+    WITHDRAWN = "withdrawn", "Withdrawn"
+
+
+class FamilyContact(TimeStampedModel):
+    """
+    A family member the Royal member permits the matchmaker to coordinate with,
+    for a stated purpose. Only the member grants permission, and may withdraw it.
+    """
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    request = models.ForeignKey(AssistanceRequest, on_delete=models.CASCADE, related_name="family_contacts")
+    name = models.CharField(max_length=80)
+    relationship = models.CharField(max_length=40)
+    # Only what's needed to coordinate. Restricted to the case's staff and the member.
+    phone_number = models.CharField(max_length=20, blank=True)
+    purpose = models.CharField(max_length=300, help_text="What the matchmaker may coordinate with this person.")
+    permission = models.CharField(
+        max_length=10, choices=FamilyPermission.choices, default=FamilyPermission.PENDING, db_index=True
+    )
+    # The exact text the member agreed to.
+    statement = models.TextField(blank=True)
+    granted_at = models.DateTimeField(null=True, blank=True)
+    withdrawn_at = models.DateTimeField(null=True, blank=True)
+    added_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+        verbose_name = "family contact"
+
+    def __str__(self):
+        return f"{self.name} ({self.relationship})"
+
+
+class FamilyCoordination(models.Model):
+    """A coordination action with a permitted family contact, as recorded by staff."""
+
+    contact = models.ForeignKey(FamilyContact, on_delete=models.CASCADE, related_name="actions")
+    action = models.CharField(max_length=300)
+    outcome = models.TextField(blank=True, help_text="Internal.")
+    visible_to_member = models.BooleanField(default=False, help_text="Show the action (not the outcome) to the member.")
+    staff = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+        verbose_name = "family coordination action"
+
+    def __str__(self):
+        return self.action

@@ -36,6 +36,7 @@ const card = {
   location: { city: "Thrissur", district: "Thrissur", state: "Kerala", country: "India" },
   photo: null,
   photos_hidden: false,
+  verified: false,
   shortlisted: false,
 };
 const page = (results: unknown[], count = results.length) => ({
@@ -147,5 +148,34 @@ describe("search form query", () => {
       profileId: "MM706381",
     });
     expect(filtersFromQuery({ profile_id: "not-an-id" }).profileId).toBeUndefined();
+  });
+});
+
+describe("advanced filters without a membership that includes them", () => {
+  it("shows the API's upgrade message and a search with only the basic filters", async () => {
+    client.get.mockRejectedValue(
+      new ApiError(403, "Advanced search filters are included with the Silver, Gold and Diamond memberships.", {
+        detail: "Advanced search filters are included with the Silver, Gold and Diamond memberships.",
+        code: "upgrade_required",
+        feature: "advanced_search",
+        filters: ["mother_tongue", "education"],
+      }),
+    );
+    await renderList({ gender: "female", religion: "hindu", mother_tongue: "tamil", education: "MBBS" });
+
+    expect(screen.getByText("Advanced filters are part of paid memberships")).toBeTruthy();
+    expect(screen.getByText(/You searched by mother tongue, education\./)).toBeTruthy();
+    expect(screen.queryByText(/profiles? found/)).toBeNull();
+    const basic = screen.getByRole("link", { name: "Search without them" }).getAttribute("href");
+    expect(basic).toBe("/search?gender=female&religion=hindu");
+    expect(screen.getByRole("link", { name: "See membership plans" }).getAttribute("href")).toBe("/dashboard/membership");
+  });
+
+  it("shows the Verified badge only for profiles the API marks verified", async () => {
+    client.get.mockResolvedValue(
+      page([card, { ...card, profile_code: "MM706382", display_name: "Diya", verified: true }]),
+    );
+    await renderList();
+    expect(screen.getAllByText("Verified")).toHaveLength(1);
   });
 });

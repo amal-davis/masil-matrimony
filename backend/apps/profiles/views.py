@@ -10,8 +10,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsMember
+from apps.memberships.entitlements import Feature, entitlements_for, upgrade_required
 
-from . import access, highlights, matching, search, services
+from . import access, highlights, matching, search, services, verification
 from .models import Profile, ProfilePhoto
 from .photos import PhotoRejected, photo_id_from_token
 from .serializers import (
@@ -96,6 +97,22 @@ class OwnPartnerPreferenceView(MemberAPIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class VerificationRequestView(MemberAPIView):
+    """POST: ask staff to verify the member's identity for the Verified badge (apps.profiles.verification)."""
+
+    @extend_schema(request=None, responses=OwnProfileSerializer, tags=["profiles"])
+    def post(self, request):
+        profile = own_profile(request)
+        try:
+            verification.request_verification(profile)
+        except verification.VerificationError as error:
+            body = {"detail": error.message, "code": error.code}
+            if error.feature:
+                body = upgrade_required(error.feature)
+            return Response(body, status=error.status)
+        return Response(OwnProfileSerializer(profile).data)
 
 
 class SubmitProfileView(MemberAPIView):
@@ -250,6 +267,9 @@ class ProfileDetailView(MemberAPIView):
             )
         if profile is None or not services.can_view_profile(viewer, profile):
             raise NotFound("Profile not found.")
+        from apps.interactions.profile_views import record_view
+
+        record_view(viewer, profile)
         return private_response(detail_data(viewer, profile, request, access.member_access(viewer, profile)))
 
 
@@ -287,6 +307,12 @@ class ProfileSearchView(MemberAPIView):
             raise PermissionDenied({"detail": "Create your profile to search other members' profiles.", "code": "no_profile"})
         filters = search.SearchFilters.from_query(request.query_params, context={"viewer": viewer})
         filters.is_valid(raise_exception=True)
+        advanced = entitlements_for(request.user).has(Feature.ADVANCED_SEARCH)
+        used = [name for name in search.ADVANCED_FILTERS if filters.validated_data.get(name)]
+        if used and not advanced:
+            return private_response(
+                {**upgrade_required(Feature.ADVANCED_SEARCH), "filters": used}, status.HTTP_403_FORBIDDEN
+            )
         results = (
             search.search_profiles(viewer, filters.validated_data)
             .select_related("user")
@@ -303,6 +329,7 @@ class ProfileSearchView(MemberAPIView):
             },
         )
         response.data["searching_for"] = search.searchable_gender(viewer)
+        response.data["advanced_search"] = advanced
         return response
 
 
@@ -318,10 +345,14 @@ class MatchesView(MemberAPIView):
     def get(self, request):
         from apps.interactions.models import Shortlist
 
+        from apps.matchmaking.engine import gate_for_member
+
         profile = own_profile(request)
         mutual_only = request.query_params.get("mutual") in ("1", "true")
+        # Live results from the engine, minus suggestions the member hid or staff dismissed
+        # (and, when staff review is required, only approved ones: apps.matchmaking.engine).
         candidates = (
-            matching.ranked_candidates(profile, mutual_only=mutual_only)
+            gate_for_member(profile, matching.ranked_candidates(profile, mutual_only=mutual_only))
             .select_related("user", "partner_preference")
             .prefetch_related(services.approved_photos_prefetch())
         )
@@ -339,3 +370,21 @@ class MatchesView(MemberAPIView):
         response.data["preferences_set"] = matching.has_preferences(matching.preference_of(profile))
         response.data["mutual_only"] = mutual_only
         return response
+
+
+class HideMatchView(MemberAPIView):
+    """
+    POST: hide a suggested profile from the signed-in member's matches. Only ever
+    the member's own list; it tells the other member nothing.
+    """
+
+    @extend_schema(request=None, tags=["profiles"])
+    def post(self, request, profile_code):
+        from apps.matchmaking.engine import hide_for_member
+
+        profile = own_profile(request)
+        candidate = Profile.objects.discoverable().exclude(pk=profile.pk).filter(profile_code=profile_code.upper()).first()
+        if candidate is None:
+            return Response({"detail": "Profile not found.", "code": "not_found"}, status=status.HTTP_404_NOT_FOUND)
+        hide_for_member(profile, candidate)
+        return Response(status=status.HTTP_204_NO_CONTENT)

@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     HighlightedProfilesView,
+    HideMatchView,
     MatchesView,
     OwnPartnerPreferenceView,
     OwnPhotosView,
@@ -12,6 +13,7 @@ from .views import (
     ProfileDetailView,
     ProfileSearchView,
     SubmitProfileView,
+    VerificationRequestView,
 )
 
 app_name = "profiles"
@@ -20,10 +22,12 @@ urlpatterns = [
     path("me/", OwnProfileView.as_view(), name="me"),
     path("me/partner-preference/", OwnPartnerPreferenceView.as_view(), name="me-partner-preference"),
     path("me/submit/", SubmitProfileView.as_view(), name="me-submit"),
+    path("me/verification/", VerificationRequestView.as_view(), name="me-verification"),
     path("me/photos/", OwnPhotosView.as_view(), name="me-photos"),
     path("me/photos/<uuid:photo_id>/", OwnPhotoView.as_view(), name="me-photo"),
     path("me/photos/<uuid:photo_id>/primary/", OwnPrimaryPhotoView.as_view(), name="me-photo-primary"),
     path("matches/", MatchesView.as_view(), name="matches"),
+    path("matches/<str:profile_code>/hide/", HideMatchView.as_view(), name="match-hide"),
     path("search/", ProfileSearchView.as_view(), name="search"),
     # Before "<profile_code>/", which would otherwise match "highlighted".
     path("highlighted/", HighlightedProfilesView.as_view(), name="highlighted"),

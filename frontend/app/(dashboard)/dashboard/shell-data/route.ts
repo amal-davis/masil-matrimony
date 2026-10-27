@@ -15,6 +15,7 @@ export async function GET() {
     membership: summary.membership?.plan_name ?? null,
     unreadNotifications: summary.notifications.unread,
     awaitingReply: summary.interests?.awaiting_your_response ?? 0,
+    unreadMessages: summary.unread_messages ?? 0,
   };
   return Response.json(data, { headers: { "Cache-Control": "private, no-store" } });
 }

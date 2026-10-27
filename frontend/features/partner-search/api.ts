@@ -14,7 +14,9 @@ export type SearchOutcome =
   /** The API refused a filter, e.g. a search for the member's own gender: field → message. */
   | { kind: "invalid"; errors: Record<string, string> }
   /** The page number is past the last page. */
-  | { kind: "past_end" };
+  | { kind: "past_end" }
+  /** Advanced filters need a membership that includes them; the API refused, naming the filters. */
+  | { kind: "upgrade_required"; message: string; filters: string[] };
 
 /**
  * Search approved profiles as the signed-in member, so the API applies their
@@ -38,6 +40,14 @@ export async function searchProfiles(query: URLSearchParams): Promise<SearchOutc
     if (error instanceof ApiError) {
       if (error.status === 401) return { kind: "signed_out" };
       if (error.status === 403 && error.body?.code === "no_profile") return { kind: "no_profile" };
+      if (error.status === 403 && error.body?.code === "upgrade_required") {
+        const filters = (error.body as { filters?: unknown }).filters;
+        return {
+          kind: "upgrade_required",
+          message: typeof error.body.detail === "string" ? error.body.detail : "This search needs a paid membership.",
+          filters: Array.isArray(filters) ? filters.filter((item): item is string => typeof item === "string") : [],
+        };
+      }
       // The paginator answers a page past the end with 404.
       if (error.status === 404 && query.has("page")) return { kind: "past_end" };
       if (error.status === 400 && error.body) return { kind: "invalid", errors: fieldMessages(error.body) };

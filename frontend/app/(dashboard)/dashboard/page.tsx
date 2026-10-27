@@ -2,13 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { CheckIcon, UserIcon } from "@/components/ui/icons";
+import { CheckIcon, MessagesIcon, UserIcon } from "@/components/ui/icons";
 import {
   ArrowUpRightIcon,
   BellIcon,
   BookmarkIcon,
   CameraIcon,
   CrownIcon,
+  EyeIcon,
   InboxIcon,
   PencilIcon,
   SendIcon,
@@ -157,7 +158,7 @@ export default async function DashboardOverviewPage() {
 
       {/* Statistics: real counts only */}
       {interests && (
-        <section aria-label="Your activity" className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 xl:grid-cols-4">
+        <section aria-label="Your activity" className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-2 xl:grid-cols-3">
           <StatCard
             label="Interests received"
             value={interests.received}
@@ -181,6 +182,20 @@ export default async function DashboardOverviewPage() {
             note="Mutual connections"
           />
           <StatCard label="Shortlisted profiles" value={summary.shortlisted} href="/dashboard/shortlisted" icon={<BookmarkIcon className="size-5" />} />
+          <StatCard
+            label="Unread messages"
+            value={summary.unread_messages}
+            href="/dashboard/messages"
+            icon={<MessagesIcon className="size-5" />}
+            emphasis={summary.unread_messages > 0}
+          />
+          <StatCard
+            label="Profile viewers"
+            value={summary.profile_viewers}
+            href="/dashboard/profile-views"
+            icon={<EyeIcon className="size-5" />}
+            note={summary.entitlements.features.profile_viewers ? "See who viewed you" : "Upgrade to see who"}
+          />
         </section>
       )}
 
@@ -330,6 +345,12 @@ export default async function DashboardOverviewPage() {
                   <p className="mt-1 text-sm text-ivory/80">
                     {subscriptionStatus[membership.status].label} · valid until {formatDate(membership.ends_at)}
                   </p>
+                  {summary.entitlements.contact_view_limit !== null && (
+                    <p className="mt-2 text-sm text-ivory/80 tabular-nums">
+                      {summary.entitlements.contact_views_remaining} of {summary.entitlements.contact_view_limit} contact
+                      numbers remaining
+                    </p>
+                  )}
                 </>
               ) : (
                 <>

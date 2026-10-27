@@ -26,7 +26,15 @@ detail doesn't match a filter on that detail.
   education, occupation     text, case-insensitive, matched anywhere in the field
   profile_id                Matrimony ID, e.g. MM482913 (case-insensitive)
 
-Order: most recently approved first, then newest profile, so pages are stable.
+Basic and advanced filters: every member may use the basic ones (gender, age,
+height, religion, caste, location, Matrimony ID). ADVANCED_FILTERS need a
+membership with Feature.ADVANCED_SEARCH (Silver, Gold, Diamond); the view
+refuses a search that uses them otherwise, so hiding the fields in the
+browser is never the only check.
+
+Order: profiles with Priority Profile Visibility (Gold, Diamond; apps.profiles.priority)
+first, then most recently approved, then newest profile, so pages are stable.
+Priority only reorders profiles that already match every filter.
 """
 from django.db.models import F, Q, QuerySet
 from rest_framework import serializers
@@ -34,6 +42,7 @@ from rest_framework import serializers
 from .choices import ALL_COMMUNITIES, COMMUNITIES, MAX_AGE, Gender, MaritalStatus, MotherTongue, Religion
 from .matching import birth_date_bounds
 from .models import HEIGHT_VALIDATORS, Profile
+from .priority import annotate_priority
 
 KERALA_DISTRICTS = {
     name.lower(): name
@@ -45,6 +54,9 @@ KERALA_DISTRICTS = {
 REST_OF_INDIA = "rest-of-india"
 ABROAD = "abroad"
 LOCATIONS = {*KERALA_DISTRICTS, REST_OF_INDIA, ABROAD}
+
+# The "More filters" of the search form, minus the Matrimony ID lookup.
+ADVANCED_FILTERS = ("marital_status", "mother_tongue", "education", "occupation")
 
 MIN_SEARCH_AGE = 18
 HEIGHT_MIN_CM = HEIGHT_VALIDATORS[0].limit_value
@@ -166,4 +178,4 @@ def search_profiles(viewer: Profile, filters: dict) -> QuerySet:
         queryset = queryset.filter(profile_code=filters["profile_id"])
 
     # One row per profile (no joins that fan out), so no duplicates without DISTINCT.
-    return queryset.order_by(F("reviewed_at").desc(nulls_last=True), "-pk")
+    return annotate_priority(queryset).order_by("-priority", F("reviewed_at").desc(nulls_last=True), "-pk")

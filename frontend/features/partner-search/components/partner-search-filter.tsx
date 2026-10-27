@@ -2,17 +2,18 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useId, useState, useTransition, type ReactNode } from "react";
-import { useForm, useWatch, type UseFormRegisterReturn } from "react-hook-form";
+import { useId, useState, useTransition } from "react";
+import { useController, useForm, useWatch, type Control, type UseFormRegisterReturn } from "react-hook-form";
 
-import { controlClasses, ErrorText, errorProps, Field, SegmentedOption, Select } from "@/components/ui/form-field";
+import { controlClasses, ErrorText, errorProps, Field, Select } from "@/components/ui/form-field";
 import { SearchIcon } from "@/components/ui/icons";
+import { RangeSlider, type RangeValue } from "@/components/ui/range-slider";
 import { cn } from "@/lib/utils";
 
 import {
-  ageOptions,
+  AGE_RANGE,
   communitiesFor,
-  heightOptions,
+  HEIGHT_RANGE_CM,
   locationGroups,
   lookingForOptions,
   maritalStatusOptions,
@@ -23,19 +24,24 @@ import {
 import {
   emptyFilters,
   filtersToQuery,
+  formatRange,
   SEARCH_RESULTS_PATH,
   partnerSearchSchema,
   type PartnerSearchInput,
   type PartnerSearchValues,
 } from "../schema";
 
-// reset() treats `undefined` as "back to the initial value", so clear the radio group with "".
+// reset() treats `undefined` as "back to the initial value", so clear the bride/groom choice with "".
 const NO_CHOICE = "" as PartnerSearchInput["lookingFor"];
 
-// Phones: 1 column. Tablets: 2. lg: roomy rows of three, then the actions bar.
-const grid = "grid grid-cols-1 gap-x-6 gap-y-6 md:grid-cols-2 lg:grid-cols-3 lg:gap-x-8 lg:gap-y-7";
+// Phones: 2 tight columns, where short selects that sit next to each other in the form share a row
+// (`cell`) and everything else takes the full width (`wide`), to keep the card short. Tablets: 2
+// columns. lg: roomy rows of three, then the actions bar.
+const grid = "grid grid-cols-2 gap-x-3 gap-y-4 md:gap-x-6 md:gap-y-6 lg:grid-cols-3 lg:gap-x-8 lg:gap-y-7";
 const cell = "min-w-0";
-const labelClasses = "text-[0.9375rem] font-medium text-ink";
+const wide = "min-w-0 max-md:col-span-2";
+// A select sharing a phone row: less padding, so its text has room beside the chevron.
+const pairedSelect = "max-md:pr-8 max-md:pl-2.5";
 
 type PartnerSearchFilterProps = {
   /** Card heading and supporting text; omit when the page already has a heading. */
@@ -114,6 +120,7 @@ export function PartnerSearchFilter({
       >
         <Select
           id={fieldId("maritalStatus")}
+          className={pairedSelect}
           {...errorProps(fieldId("maritalStatus"), errors.maritalStatus?.message)}
           {...register("maritalStatus")}
         >
@@ -129,6 +136,7 @@ export function PartnerSearchFilter({
       >
         <Select
           id={fieldId("motherTongue")}
+          className={pairedSelect}
           {...errorProps(fieldId("motherTongue"), errors.motherTongue?.message)}
           {...register("motherTongue")}
         >
@@ -163,12 +171,12 @@ export function PartnerSearchFilter({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-line bg-white p-5 shadow-[0_1px_2px_rgba(36,26,28,0.04),0_8px_24px_rgba(36,26,28,0.06)] sm:p-8 lg:p-10",
+        "rounded-2xl border border-line bg-white p-4 shadow-[0_1px_2px_rgba(36,26,28,0.04),0_8px_24px_rgba(36,26,28,0.06)] sm:p-8 lg:p-10",
         className,
       )}
     >
       {title && (
-        <div className="mb-7 flex flex-col gap-1.5 lg:mb-9">
+        <div className="mb-5 flex flex-col gap-1.5 sm:mb-7 lg:mb-9">
           <Heading id={fieldId("title")} className="text-2xl font-semibold sm:text-3xl">
             {title}
           </Heading>
@@ -184,46 +192,51 @@ export function PartnerSearchFilter({
         onSubmit={handleSubmit(onSubmit)}
       >
         <div className={grid}>
-          <fieldset
-            className={cell}
-            aria-describedby={errors.lookingFor ? `${fieldId("lookingFor")}-error` : undefined}
+          <Field
+            id={fieldId("lookingFor")}
+            label="I am looking for a"
+            error={errors.lookingFor?.message}
+            className={wide}
           >
-            <legend className={labelClasses}>I am looking for a</legend>
-            <div className="mt-2 grid grid-cols-2 gap-3">
-              {lookingForOptions.map((option) => (
-                <SegmentedOption
-                  key={option.value}
-                  value={option.value}
-                  label={option.label}
-                  invalid={Boolean(errors.lookingFor)}
-                  {...register("lookingFor")}
-                />
-              ))}
-            </div>
-            <ErrorText id={`${fieldId("lookingFor")}-error`} message={errors.lookingFor?.message} />
-          </fieldset>
+            <Select
+              id={fieldId("lookingFor")}
+              aria-required="true"
+              {...errorProps(fieldId("lookingFor"), errors.lookingFor?.message)}
+              {...register("lookingFor")}
+            >
+              <option value="">Bride or groom</option>
+              <Options options={lookingForOptions} />
+            </Select>
+          </Field>
 
-          <RangeField
+          <RangeFilter
             id={fieldId("age")}
-            legend="Age (years)"
-            className={cell}
-            options={ageOptions}
-            min={{ label: "Minimum age", field: register("ageMin"), error: errors.ageMin?.message }}
-            max={{ label: "Maximum age", field: register("ageMax"), error: errors.ageMax?.message }}
+            control={control}
+            names={["ageMin", "ageMax"]}
+            label="Age"
+            thumbLabels={["Minimum age", "Maximum age"]}
+            scale={AGE_RANGE}
+            unit="yrs"
+            spokenUnit="years"
+            error={errors.ageMin?.message ?? errors.ageMax?.message}
           />
 
-          <RangeField
+          <RangeFilter
             id={fieldId("height")}
-            legend="Height"
-            className={cell}
-            options={heightOptions}
-            min={{ label: "Minimum height", field: register("heightMin"), error: errors.heightMin?.message }}
-            max={{ label: "Maximum height", field: register("heightMax"), error: errors.heightMax?.message }}
+            control={control}
+            names={["heightMin", "heightMax"]}
+            label="Height"
+            thumbLabels={["Minimum height", "Maximum height"]}
+            scale={HEIGHT_RANGE_CM}
+            unit="cm"
+            spokenUnit="centimetres"
+            error={errors.heightMin?.message ?? errors.heightMax?.message}
           />
 
           <Field id={fieldId("religion")} label="Religion" error={errors.religion?.message} className={cell}>
             <Select
               id={fieldId("religion")}
+              className={pairedSelect}
               {...errorProps(fieldId("religion"), errors.religion?.message)}
               {...religionField}
             >
@@ -235,6 +248,7 @@ export function PartnerSearchFilter({
           <Field id={fieldId("community")} label="Community" error={errors.community?.message} className={cell}>
             <Select
               id={fieldId("community")}
+              className={pairedSelect}
               disabled={communities.length === 0}
               {...errorProps(fieldId("community"), errors.community?.message)}
               {...register("community")}
@@ -244,13 +258,13 @@ export function PartnerSearchFilter({
                   ? "None listed"
                   : religion
                     ? "Any"
-                    : "Choose a religion first"}
+                    : "Pick religion"}
               </option>
               <Options options={communities} />
             </Select>
           </Field>
 
-          <Field id={fieldId("location")} label="Location" error={errors.location?.message} className={cell}>
+          <Field id={fieldId("location")} label="Location" error={errors.location?.message} className={wide}>
             <Select
               id={fieldId("location")}
               {...errorProps(fieldId("location"), errors.location?.message)}
@@ -268,17 +282,22 @@ export function PartnerSearchFilter({
 
         {/* Same columns as the grid above. Kept in the DOM while collapsed so selections survive toggling. */}
         <div id={fieldId("more")} hidden={!showMore} className={cn(grid, "mt-6 lg:mt-7")}>
+          {/* The API enforces this (backend/apps/profiles/search.py ADVANCED_FILTERS); the note only says so up front. */}
+          <p className="col-span-full text-sm text-ink-muted">
+            Marital status, mother tongue, education and occupation are advanced filters, included with the Silver,
+            Gold and Diamond memberships. Matrimony ID search is open to every member.
+          </p>
           {moreFields}
         </div>
 
-        <div className="mt-8 flex flex-col-reverse gap-4 border-t border-line pt-6 sm:flex-row sm:items-center sm:justify-between lg:mt-9 lg:pt-7">
+        <div className="mt-6 flex flex-col-reverse gap-2 border-t border-line pt-5 sm:mt-8 sm:flex-row sm:gap-4 sm:pt-6 sm:items-center sm:justify-between lg:mt-9 lg:pt-7">
           <div className="flex items-center justify-center gap-2 sm:-ml-3 sm:justify-start">
             <button
               type="button"
               aria-expanded={showMore}
               aria-controls={fieldId("more")}
               onClick={() => setShowMore((value) => !value)}
-              className="inline-flex h-12 items-center gap-1.5 rounded-md px-3 text-[0.9375rem] font-medium text-wine-600 transition-colors hover:bg-wine-600/5 focus-visible:outline-wine-600"
+              className="inline-flex h-11 items-center gap-1.5 rounded-md px-3 text-[0.9375rem] font-medium text-wine-600 transition-colors hover:bg-wine-600/5 focus-visible:outline-wine-600 sm:h-12"
             >
               {showMore ? "Fewer filters" : "More filters"}
               {moreCount > 0 && (
@@ -304,7 +323,7 @@ export function PartnerSearchFilter({
             <button
               type="button"
               onClick={() => reset({ ...emptyFilters, lookingFor: NO_CHOICE })}
-              className="inline-flex h-12 items-center rounded-md px-3 text-[0.9375rem] font-medium text-ink-muted transition-colors hover:text-ink focus-visible:outline-wine-600"
+              className="inline-flex h-11 items-center rounded-md px-3 text-[0.9375rem] font-medium text-ink-muted transition-colors hover:text-ink focus-visible:outline-wine-600 sm:h-12"
             >
               Clear all
             </button>
@@ -347,7 +366,7 @@ function TextFilter({
   field: UseFormRegisterReturn;
 }) {
   return (
-    <Field id={id} label={label} error={error} className={cell}>
+    <Field id={id} label={label} error={error} className={wide}>
       <input
         id={id}
         type="text"
@@ -362,42 +381,66 @@ function TextFilter({
   );
 }
 
-type RangeEnd = { label: string; field: UseFormRegisterReturn; error?: string };
+type RangeName = "ageMin" | "ageMax" | "heightMin" | "heightMax";
 
-/** A labelled pair of min/max selects. Errors from either end show below the pair. */
-function RangeField({
+/**
+ * A dual-thumb slider over a min/max pair of filters. A thumb at its end of the
+ * scale means "no limit": that field stays "" and isn't sent, as with "Any" before.
+ */
+function RangeFilter({
   id,
-  legend,
-  options,
-  min,
-  max,
-  className,
+  control,
+  names: [minName, maxName],
+  label,
+  thumbLabels,
+  scale,
+  unit,
+  spokenUnit,
+  error,
 }: {
   id: string;
-  legend: ReactNode;
-  options: readonly Option[];
-  min: RangeEnd;
-  max: RangeEnd;
-  className?: string;
+  control: Control<PartnerSearchInput, unknown, PartnerSearchValues>;
+  names: [RangeName, RangeName];
+  label: string;
+  thumbLabels: [string, string];
+  scale: { min: number; max: number };
+  unit: string;
+  spokenUnit: string;
+  error?: string;
 }) {
-  const error = min.error ?? max.error;
+  const { field: low } = useController({ control, name: minName });
+  const { field: high } = useController({ control, name: maxName });
+  const value: RangeValue = [low.value ? Number(low.value) : scale.min, high.value ? Number(high.value) : scale.max];
+
+  const onChange = ([min, max]: RangeValue) => {
+    low.onChange(min === scale.min ? "" : String(min));
+    high.onChange(max === scale.max ? "" : String(max));
+  };
+  const valueText = (value: number, thumb: 0 | 1) =>
+    thumb === 0 && value === scale.min
+      ? "No minimum"
+      : thumb === 1 && value === scale.max
+        ? "No maximum"
+        : `${value} ${spokenUnit}`;
+  const text = formatRange(low.value, high.value, unit);
+
   return (
-    <fieldset className={className} aria-describedby={error ? `${id}-error` : undefined}>
-      <legend className={labelClasses}>{legend}</legend>
-      <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
-        <Select compact aria-label={min.label} aria-invalid={min.error ? true : undefined} {...min.field}>
-          <option value="">Any</option>
-          <Options options={options} />
-        </Select>
-        <span aria-hidden="true" className="text-sm text-ink-muted">
-          to
-        </span>
-        <Select compact aria-label={max.label} aria-invalid={max.error ? true : undefined} {...max.field}>
-          <option value="">Any</option>
-          <Options options={options} />
-        </Select>
-      </div>
+    <div className={wide}>
+      <RangeSlider
+        id={id}
+        label={label}
+        min={scale.min}
+        max={scale.max}
+        value={value}
+        onChange={onChange}
+        onBlur={low.onBlur}
+        thumbLabels={thumbLabels}
+        valueText={valueText}
+        display={text ? text.charAt(0).toUpperCase() + text.slice(1) : "Any"}
+        invalid={Boolean(error)}
+        describedBy={error ? `${id}-error` : undefined}
+      />
       <ErrorText id={`${id}-error`} message={error} />
-    </fieldset>
+    </div>
   );
 }

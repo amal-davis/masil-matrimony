@@ -103,6 +103,10 @@ export const previewProfile: OwnProfile = {
     notes: "",
     must_haves: ["age", "height", "marital_status", "religion"],
   },
+  verification_status: "verified",
+  verification_requested_at: at("2026-08-03"),
+  verification_note: "",
+  verified_at: at("2026-08-04"),
 };
 
 /** Illustrated placeholders (public/images/preview), not photographs of anyone. */
@@ -134,6 +138,8 @@ function toCard(profile: ProfileDetail): MemberCard {
     },
     photo: null,
     photos_hidden: false,
+    // No sample member is shown as verified: the badge is only ever a staff decision.
+    verified: false,
   };
 }
 
@@ -210,7 +216,32 @@ export const previewMembership: MembershipInfo = {
     contact_views_used: 12,
   },
   history: [],
-  entitlements: { package_code: "diamond", outgoing_interest_limit: null, outgoing_interests_used: null, contact_view_limit: 100 },
+  entitlements: {
+    package_code: "diamond",
+    package_name: "Diamond Membership",
+    is_paid: true,
+    features: {
+      photo_viewing: true,
+      advanced_search: true,
+      messaging: true,
+      profile_viewers: true,
+      verification: true,
+      priority_visibility: true,
+      matchmaking_assistance: true,
+      unlimited_interests: true,
+      contact_access: true,
+      basic_search: true,
+      shortlist: true,
+      match_suggestions: true,
+    },
+    outgoing_interest_limit: null,
+    outgoing_interests_used: null,
+    contact_view_limit: 100,
+    contact_views_used: 12,
+    contact_views_remaining: 88,
+    unavailable: [],
+  },
+  assistance: { included: true, can_request: true, available: true, requests: [] },
   online_payment_available: false,
 };
 previewMembership.history = [previewMembership.current!];
@@ -309,6 +340,11 @@ export function previewSummary(): DashboardSummary {
       accepted: [...received, ...sent].filter((item) => item.status === "accepted").length,
     },
     shortlisted: previewShortlist.length,
+    // The preview has no sample conversations or profile views, so nothing is claimed.
+    unread_messages: 0,
+    profile_viewers: 0,
+    verification: { status: "verified", note: "", verified_at: previewProfile.verified_at },
+    entitlements: previewMembership.entitlements,
     recent_interests: [
       ...received.map((item) => ({ ...item, direction: "received" as const })),
       ...sent.map((item) => ({ ...item, direction: "sent" as const })),
@@ -328,6 +364,7 @@ export function previewShellData(): ShellData {
     membership: summary.membership?.plan_name ?? null,
     unreadNotifications: summary.notifications.unread,
     awaitingReply: summary.interests!.awaiting_your_response,
+    unreadMessages: summary.unread_messages,
   };
 }
 

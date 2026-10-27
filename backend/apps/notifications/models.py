@@ -19,6 +19,10 @@ class NotificationKind(models.TextChoices):
     PHOTO_APPROVED = "photo_approved", "Photo approved"
     PHOTO_REJECTED = "photo_rejected", "Photo rejected"
     MEMBERSHIP_ACTIVATED = "membership_activated", "Membership activated"
+    MESSAGE_RECEIVED = "message_received", "Message received"
+    VERIFICATION_DECIDED = "verification_decided", "Verification decided"
+    ASSISTANCE_UPDATED = "assistance_updated", "Matchmaking assistance updated"
+    CONTACT_EXCHANGE = "contact_exchange", "Contact exchange"
 
 
 class Notification(models.Model):

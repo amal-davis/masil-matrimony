@@ -173,8 +173,15 @@ class OwnProfileSerializer(serializers.ModelSerializer):
             # profile (is_highlighted) is deliberately not part of the member's API.
             "homepage_consent",
             "partner_preference",
+            "verification_status",
+            "verification_requested_at",
+            "verification_note",
+            "verified_at",
         ]
-        read_only_fields = ["profile_code", "status", "review_note", "submitted_at", "identity_locked"]
+        read_only_fields = [
+            "profile_code", "status", "review_note", "submitted_at", "identity_locked",
+            "verification_status", "verification_requested_at", "verification_note", "verified_at",
+        ]
 
     def get_max_photos(self, profile):
         return settings.PROFILE_MAX_PHOTOS
@@ -292,6 +299,8 @@ def card_data(viewer, profile, request, accepted_ids=None) -> dict:
         },
         "photo": photo_data(photo, request) if photo else None,
         "photos_hidden": services.photos_hidden_from(viewer, profile, accepted_ids),
+        # Staff verified the member's identity (apps.profiles.verification); only this yes/no is shared.
+        "verified": profile.is_verified,
     }
 
 

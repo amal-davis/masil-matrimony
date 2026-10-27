@@ -21,6 +21,10 @@ import {
 } from "./preview";
 
 import type {
+  AssistanceCase,
+  ContactExchangeItem,
+  ConversationItem,
+  ConversationPage,
   DashboardSummary,
   InterestItem,
   MembershipInfo,
@@ -31,9 +35,11 @@ import type {
   OwnPhoto,
   OwnProfile,
   Paginated,
+  ProfileViewerItem,
   Purchase,
   ReceiptData,
   ShortlistItem,
+  UpgradeRequired,
 } from "./types";
 
 /**
@@ -186,6 +192,63 @@ export const getShortlist = async (page: number) =>
   DASHBOARD_PREVIEW
     ? previewPage(previewShortlist, page)
     : listOrNull<ShortlistItem>(`/shortlist/${pageQuery(page)}`, "/dashboard/shortlisted");
+
+// --- Messages and profile views (no preview data: nothing fictional is shown as a real conversation) ---
+
+const emptyPage = { count: 0, next: null, previous: null, results: [] };
+
+export const getConversations = async (page: number): Promise<Paginated<ConversationItem> | null> =>
+  DASHBOARD_PREVIEW ? emptyPage : listOrNull<ConversationItem>(`/messages/${pageQuery(page)}`, "/dashboard/messages");
+
+/** One conversation; null when the member (or their own profile) doesn't exist or isn't available. */
+export async function getConversation(code: string, page: number): Promise<ConversationPage | null> {
+  if (DASHBOARD_PREVIEW || !/^[A-Za-z0-9]{4,12}$/.test(code)) return null;
+  try {
+    return await memberGet<ConversationPage>(`/messages/${code}/${pageQuery(page)}`, `/dashboard/messages/${code}`);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+export type ProfileViewers =
+  | { kind: "list"; page: Paginated<ProfileViewerItem> }
+  | { kind: "upgrade"; message: string; viewerCount: number }
+  | { kind: "no_profile" };
+
+/** Who viewed the member's profile, or (without the feature) only how many members did. */
+export async function getProfileViewers(page: number): Promise<ProfileViewers> {
+  if (DASHBOARD_PREVIEW) return { kind: "list", page: emptyPage };
+  try {
+    return { kind: "list", page: await memberGet<Paginated<ProfileViewerItem>>(`/profile-views/${pageQuery(page)}`, "/dashboard/profile-views") };
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 403 && error.body?.code === "upgrade_required") {
+      const body = error.body as unknown as UpgradeRequired & { viewer_count?: number };
+      return { kind: "upgrade", message: body.detail, viewerCount: body.viewer_count ?? 0 };
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      return error.body?.code === "no_profile" ? { kind: "no_profile" } : { kind: "list", page: emptyPage };
+    }
+    throw error;
+  }
+}
+
+/** One of the member's own matchmaking cases, or null when it isn't theirs (or doesn't exist). */
+export async function getAssistanceCase(id: string): Promise<AssistanceCase | null> {
+  if (DASHBOARD_PREVIEW || !UUID_PATTERN.test(id)) return null;
+  try {
+    return await memberGet<AssistanceCase>(`/memberships/me/assistance/${id}/`, "/dashboard/matchmaking");
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+/** Contact exchanges proposed by a matchmaker that involve the member. */
+export const getContactExchanges = async () =>
+  DASHBOARD_PREVIEW ? [] : memberGet<ContactExchangeItem[]>("/memberships/contact-exchanges/", "/dashboard/contact-requests");
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const getMembership = async () =>
   DASHBOARD_PREVIEW ? previewMembership : memberGet<MembershipInfo>("/memberships/me/", "/dashboard/membership");

@@ -6,6 +6,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .notifications import notify_new_enquiry
 from .serializers import EnquiryCreateSerializer
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,8 @@ MAX_REQUEST_BYTES = 16 * 1024
 
 class EnquiryCreateView(APIView):
     """
-    Public contact form. Stores the enquiry for staff to follow up in the admin.
+    Public contact form. Stores the enquiry for staff to follow up in the admin and
+    emails its details to the team's mailbox (apps.enquiries.notifications).
     No authentication, so no session or CSRF is involved; abuse is limited by the
     "enquiries" throttle scope, a request size cap and a honeypot field.
     """
@@ -48,4 +50,6 @@ class EnquiryCreateView(APIView):
         enquiry = serializer.save()
         # Log the id only, never the visitor's details or message.
         logger.info("Enquiry %s received", enquiry.public_id)
+        # Already saved, so the visitor gets a success even if the email fails (that is logged).
+        notify_new_enquiry(enquiry, request)
         return Response({"id": str(enquiry.public_id)}, status=status.HTTP_201_CREATED)

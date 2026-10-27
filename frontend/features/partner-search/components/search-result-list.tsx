@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { SearchIcon, UserIcon } from "@/components/ui/icons";
+import { LockIcon, SearchIcon, UserIcon } from "@/components/ui/icons";
 import { RetryButton } from "@/components/ui/retry-button";
 import { loginUrl } from "@/features/auth/constants";
 import { MemberGrid } from "@/features/dashboard/components/member-grid";
@@ -27,6 +27,14 @@ export const SEARCH_PARAMS = [
   "occupation",
   "profile_id",
 ] as const;
+
+/** Names for the advanced filters the API can refuse (backend/apps/profiles/search.py ADVANCED_FILTERS). */
+const FILTER_LABELS: Record<string, string> = {
+  marital_status: "marital status",
+  mother_tongue: "mother tongue",
+  education: "education",
+  occupation: "occupation",
+};
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -108,6 +116,31 @@ export async function SearchResultList({ query }: { query: Query }) {
           </Notice>
         </Section>
       );
+    case "upgrade_required": {
+      // Search again with only the basic filters the member's plan includes.
+      const basic = new URLSearchParams(filters);
+      for (const name of outcome.filters) basic.delete(name);
+      return (
+        <Section>
+          <EmptyState
+            icon={<LockIcon className="size-6" />}
+            title="Advanced filters are part of paid memberships"
+            action={
+              <div className="flex flex-wrap justify-center gap-3">
+                <Link href="/dashboard/membership" className={primaryButton}>
+                  See membership plans
+                </Link>
+                <Link href={`${SEARCH_RESULTS_PATH}${basic.size ? `?${basic}` : ""}`} className={secondaryButton}>
+                  Search without them
+                </Link>
+              </div>
+            }
+          >
+            {outcome.message} You searched by {outcome.filters.map((name) => FILTER_LABELS[name] ?? name).join(", ")}.
+          </EmptyState>
+        </Section>
+      );
+    }
     case "past_end":
       return (
         <Section>

@@ -42,6 +42,7 @@ LOCAL_APPS = [
     "apps.memberships",
     "apps.payments",
     "apps.interactions",
+    "apps.matchmaking",
     "apps.notifications",
     "apps.enquiries",
     "apps.crm",
@@ -161,6 +162,7 @@ REST_FRAMEWORK = {
         "photo_upload": env.str("API_THROTTLE_PHOTO_UPLOAD", default="30/hour"),
         "interest_send": env.str("API_THROTTLE_INTEREST_SEND", default="100/day"),
         "contact_view": env.str("API_THROTTLE_CONTACT_VIEW", default="60/hour"),
+        "message_send": env.str("API_THROTTLE_MESSAGE_SEND", default="120/hour"),
         # Membership checkout (order creation, verification, status checks), per member.
         "payments": env.str("API_THROTTLE_PAYMENTS", default="30/hour"),
         # A member changing their own email address, per member.
@@ -252,6 +254,22 @@ if RAZORPAY_KEY_ID and not RAZORPAY_KEY_ID.startswith(f"rzp_{RAZORPAY_MODE}_"):
 # until then. Packages whose published price states its own rate (Royal) don't use this.
 MEMBERSHIP_GST_RATE_PERCENT = env.str("MEMBERSHIP_GST_RATE_PERCENT", default="").strip()
 
+# Gold and Diamond benefits offered "subject to availability" (apps.memberships.entitlements).
+# Priority visibility is a ranking rule (apps.profiles.priority): on unless switched off.
+PRIORITY_VISIBILITY_ENABLED = env.bool("PRIORITY_VISIBILITY_ENABLED", default=True)
+# Members may ask for a matchmaker (apps.memberships.assistance). Switch off while no staff
+# member can take requests; members then see "currently unavailable" and can't ask.
+MATCHMAKING_ASSISTANCE_AVAILABLE = env.bool("MATCHMAKING_ASSISTANCE_AVAILABLE", default=True)
+
+# Automatic match recommendations (apps.matchmaking.engine).
+# Off: recommendations are published automatically (staff can still dismiss or flag one).
+# On: members see only recommendations staff approved.
+MATCH_REVIEW_REQUIRED = env.bool("MATCH_REVIEW_REQUIRED", default=False)
+# How many of a member's best eligible candidates are stored per run.
+MATCH_RECOMMENDATION_LIMIT = env.int("MATCH_RECOMMENDATION_LIMIT", default=100)
+# Regenerate a member's recommendations right after they change their partner preferences.
+MATCH_REGENERATE_ON_CHANGE = env.bool("MATCH_REGENERATE_ON_CHANGE", default=True)
+
 # Seller details printed on payment receipts. Never invent these: leave empty until the
 # business confirms them. Live payments are refused while the name or address is missing.
 BILLING_SELLER_NAME = env.str("BILLING_SELLER_NAME", default="").strip()
@@ -285,6 +303,9 @@ EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=False)
 EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT_SECONDS", default=10)
 DEFAULT_FROM_EMAIL = env.str("DEFAULT_FROM_EMAIL", default="")
 SERVER_EMAIL = DEFAULT_FROM_EMAIL or "root@localhost"
+# Contact-form enquiries are emailed here (apps/enquiries/notifications.py). Empty means the
+# address the site sends from (DEFAULT_FROM_EMAIL), so enquiries arrive in that same mailbox.
+ENQUIRY_NOTIFICATION_EMAIL = env.str("ENQUIRY_NOTIFICATION_EMAIL", default="").strip()
 
 # --------------------------------------------------------------------------
 # Member photos (apps/profiles/photos.py)

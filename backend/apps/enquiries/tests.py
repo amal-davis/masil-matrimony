@@ -1,10 +1,13 @@
 from unittest import mock
 
+from django.core import mail
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework.throttling import ScopedRateThrottle
+
+from apps.notifications.mail import EmailError
 
 from .models import Enquiry
 from .serializers import normalise_phone
@@ -106,7 +109,8 @@ class EnquiryCreateTests(TestCase):
         self.assertEqual(Enquiry.objects.count(), 2)
 
     def test_message_is_not_logged(self):
-        with self.assertLogs("apps.enquiries", level="INFO") as logs:
+        # Including the notification email's own log line (apps.notifications.mail).
+        with self.assertLogs("apps", level="INFO") as logs:
             self.post()
         output = "\n".join(logs.output)
         for value in ("Anu", "98765", "daughter", "example.com"):
@@ -119,6 +123,58 @@ class EnquiryCreateTests(TestCase):
             response = self.post()
         self.assertEqual(response.status_code, 500)
         self.assertNotIn("secret", response.content.decode())
+
+
+
+class EnquiryEmailTests(TestCase):
+    """Each enquiry is emailed to the team: from and to the site's own address, Reply-To the visitor."""
+
+    url = "/api/v1/enquiries/"
+
+    def setUp(self):
+        self.client = APIClient()
+
+    def post(self, data=None):
+        return self.client.post(self.url, data if data is not None else VALID, format="json")
+
+    def test_every_detail_is_emailed_to_the_sending_address(self):
+        response = self.post()
+        self.assertEqual(response.status_code, 201)
+        enquiry = Enquiry.objects.get()
+
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertEqual(message.from_email, "Massil Matrimony <noreply@example.com>")
+        self.assertEqual(message.to, ["noreply@example.com"])
+        self.assertEqual(message.reply_to, ["Anu.Thomas@example.com"])
+        self.assertEqual(message.subject, f"New website enquiry {str(enquiry.public_id)[:8].upper()}")
+        for detail in ("Anu Thomas", "Anu.Thomas@example.com", "+919876543210", VALID["message"], str(enquiry.public_id)):
+            self.assertIn(detail, message.body)
+        self.assertIn(f"/admin/enquiries/enquiry/{enquiry.pk}/change/", message.body)
+
+    @override_settings(ENQUIRY_NOTIFICATION_EMAIL="team@example.com")
+    def test_a_different_mailbox_can_be_set(self):
+        self.post()
+        self.assertEqual(mail.outbox[0].to, ["team@example.com"])
+        self.assertEqual(mail.outbox[0].from_email, "Massil Matrimony <noreply@example.com>")
+
+    def test_the_message_is_not_html_escaped(self):
+        self.post({**VALID, "name": "Anu D'Souza", "message": "Is it <free> & safe? Tell me more please."})
+        self.assertIn("Anu D'Souza", mail.outbox[0].body)
+        self.assertIn("Is it <free> & safe?", mail.outbox[0].body)
+
+    def test_a_failed_email_still_saves_the_enquiry(self):
+        with mock.patch("apps.enquiries.notifications.send_email", side_effect=EmailError("SMTP down")), self.assertLogs(
+            "apps.enquiries.notifications", level="ERROR"
+        ) as logs:
+            response = self.post()
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Enquiry.objects.count(), 1)
+        self.assertNotIn("Anu", "".join(logs.output))
+
+    def test_spam_is_not_emailed(self):
+        self.post({**VALID, "website": "http://spam.example"})
+        self.assertEqual(mail.outbox, [])
 
 
 class PhoneNormalisationTests(TestCase):

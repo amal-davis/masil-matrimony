@@ -1,7 +1,7 @@
 """
-Member-to-member activity: interests sent/accepted/declined, shortlists and
-paid contact-number views. Profile views, blocks and reports are planned
-(docs/database-design.md).
+Member-to-member activity: interests sent/accepted/declined, shortlists,
+paid contact-number views, profile views and personal messages. Blocks and
+reports are planned (docs/database-design.md).
 """
 import uuid
 
@@ -84,3 +84,73 @@ class ContactView(models.Model):
 
     def __str__(self):
         return f"{self.viewer.profile_code} viewed {self.profile.profile_code}'s number"
+
+
+class ProfileView(models.Model):
+    """
+    A member opened another member's profile page (apps.interactions.profile_views).
+    One row per (viewer, profile): later visits update it, and a visit counts again
+    only after VISIT_GAP, so reloads and repeated rendering aren't new views.
+    """
+
+    viewer = models.ForeignKey("profiles.Profile", on_delete=models.CASCADE, related_name="profile_views_made")
+    profile = models.ForeignKey("profiles.Profile", on_delete=models.CASCADE, related_name="profile_views_received")
+    first_viewed_at = models.DateTimeField()
+    last_viewed_at = models.DateTimeField()
+    visits = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ["-last_viewed_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["viewer", "profile"], name="one_profile_view_per_pair"),
+            models.CheckConstraint(condition=~Q(viewer=F("profile")), name="no_profile_view_of_self"),
+        ]
+        indexes = [models.Index(fields=["profile", "last_viewed_at"])]
+
+    def __str__(self):
+        return f"{self.viewer.profile_code} viewed {self.profile.profile_code}"
+
+
+class Conversation(TimeStampedModel):
+    """
+    Personal messages between two members (apps.interactions.messaging). One per
+    pair: `member_a` is always the profile with the lower id, so the pair is unique
+    whoever writes first.
+    """
+
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    member_a = models.ForeignKey("profiles.Profile", on_delete=models.CASCADE, related_name="+")
+    member_b = models.ForeignKey("profiles.Profile", on_delete=models.CASCADE, related_name="+")
+    # Who wrote first. Starting a conversation needs the messaging benefit; the other member may reply.
+    started_by = models.ForeignKey("profiles.Profile", on_delete=models.CASCADE, related_name="+")
+    last_message_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        ordering = ["-last_message_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["member_a", "member_b"], name="one_conversation_per_pair"),
+            models.CheckConstraint(condition=Q(member_a__lt=F("member_b")), name="conversation_members_ordered"),
+        ]
+
+    def __str__(self):
+        return f"Conversation {self.public_id}"
+
+    def other(self, profile):
+        return self.member_b if profile.pk == self.member_a_id else self.member_a
+
+
+class Message(models.Model):
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name="messages")
+    sender = models.ForeignKey("profiles.Profile", on_delete=models.CASCADE, related_name="messages_sent")
+    body = models.TextField(max_length=2000)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    # When the other member opened the conversation after this message arrived.
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+        indexes = [models.Index(fields=["conversation", "sender", "read_at"])]
+
+    def __str__(self):
+        return f"Message {self.public_id}"

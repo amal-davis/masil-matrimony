@@ -12,8 +12,8 @@ from unfold.enums import ActionVariant
 from apps.notifications.models import NotificationKind
 from apps.notifications.services import notify
 
-from . import highlights
-from .choices import PhotoStatus, ProfileStatus
+from . import highlights, verification
+from .choices import PhotoStatus, ProfileStatus, VerificationStatus
 from .models import PartnerPreference, Profile, ProfilePhoto
 from .photos import signed_photo_url
 
@@ -79,7 +79,10 @@ class ProfileAdmin(ModelAdmin):
         "profile_code", "display_name", "gender", "status", "account", "is_highlighted", "homepage", "submitted_at",
         "reviewed_at",
     ]
-    list_filter = ["status", "is_highlighted", "homepage_consent", "gender", "religion", "visibility", "created_for"]
+    list_filter = [
+        "status", "verification_status", "is_highlighted", "homepage_consent", "gender", "religion", "visibility",
+        "created_for",
+    ]
     list_select_related = ["user"]
     search_fields = ["profile_code", "display_name", "user__email", "user__phone_number"]
     search_help_text = "Search by Matrimony ID, name, email or mobile number."
@@ -91,9 +94,11 @@ class ProfileAdmin(ModelAdmin):
     readonly_fields = [
         "public_id", "profile_code", "account", "status", "contact_sharing", "homepage_consent", "homepage",
         "submitted_at", "reviewed_at", "reviewed_by", "created_at", "updated_at",
+        # Changed only through the verification actions, which record who decided.
+        "verification_status", "verification_requested_at", "verified_at", "verified_by",
     ]
     inlines = [PartnerPreferenceInline, ProfilePhotoInline]
-    actions = ["approve", "request_changes", "highlight", "remove_highlight"]
+    actions = ["approve", "request_changes", "highlight", "remove_highlight", "mark_verified", "decline_verification"]
     # The same review steps as buttons at the top of a profile's own page.
     actions_detail = ["approve_this", "request_changes_this", "approve_photos_this"]
 
@@ -149,6 +154,36 @@ class ProfileAdmin(ModelAdmin):
             self.log_change(request, profile, "Removed from homepage.")
             updated += 1
         self.message_user(request, f"Removed {updated} profile(s) from the homepage.")
+
+    @admin.action(
+        description="Mark identity verified (after checking the member's ID document)", permissions=["change"]
+    )
+    def mark_verified(self, request, queryset):
+        count = 0
+        for profile in queryset.filter(verification_status=VerificationStatus.REQUESTED):
+            if verification.decide(profile, request.user, verified=True):
+                self.log_change(request, profile, "Identity verified.")
+                count += 1
+        self.message_user(
+            request,
+            f"Verified {count} profile(s). The members have been notified."
+            if count
+            else "Nothing was verified: only approved profiles whose member asked for verification can be verified.",
+            messages.SUCCESS if count else messages.WARNING,
+        )
+
+    @admin.action(
+        description="Decline verification (write the reason in 'Verification note' first)", permissions=["change"]
+    )
+    def decline_verification(self, request, queryset):
+        count = 0
+        for profile in queryset.filter(
+            verification_status__in=[VerificationStatus.REQUESTED, VerificationStatus.VERIFIED]
+        ):
+            if verification.decide(profile, request.user, verified=False, note=profile.verification_note):
+                self.log_change(request, profile, "Identity verification declined.")
+                count += 1
+        self.message_user(request, f"Declined verification for {count} profile(s).")
 
     @admin.display(description="Account", ordering="user__email")
     def account(self, profile):

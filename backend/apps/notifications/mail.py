@@ -14,7 +14,7 @@ import logging
 import smtplib
 
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives, send_mail
 
 logger = logging.getLogger(__name__)
 
@@ -71,15 +71,22 @@ def email_configured() -> bool:
     )
 
 
-def send_email(to: str, subject: str, body: str, html: str | None = None) -> None:
+def send_email(to: str, subject: str, body: str, html: str | None = None, reply_to: str | None = None) -> None:
     """
     Send an email to one address: plain text, plus an HTML alternative when `html`
-    is given. Raises EmailError if it wasn't accepted.
+    is given. `reply_to` makes the recipient's Reply go to that address instead of
+    the sender. Raises EmailError if it wasn't accepted.
     """
     if not email_configured():
         raise EmailNotConfigured("EMAIL_PROVIDER, DEFAULT_FROM_EMAIL and FRONTEND_URL must be set.")
     try:
-        send_mail(subject, body, None, [to], fail_silently=False, html_message=html)
+        if reply_to:
+            message = EmailMultiAlternatives(subject, body, None, [to], reply_to=[reply_to])
+            if html:
+                message.attach_alternative(html, "text/html")
+            message.send(fail_silently=False)
+        else:
+            send_mail(subject, body, None, [to], fail_silently=False, html_message=html)
     except (smtplib.SMTPException, OSError) as exc:
         # Never include the body (it may hold a password-reset or verification link) or the
         # server's reply (it can echo credentials): describe_failure names the setting to check.

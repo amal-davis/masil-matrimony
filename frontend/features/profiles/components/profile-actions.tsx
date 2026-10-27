@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, useTransition, type ReactNode } from "react";
 
-import { HeartIcon, InfoIcon, PhoneIcon } from "@/components/ui/icons";
+import { HeartIcon, InfoIcon, MessagesIcon, PhoneIcon } from "@/components/ui/icons";
 import { loginUrl } from "@/features/auth/constants";
 import { addToShortlist, removeFromShortlist, sendInterest, viewContactNumber } from "@/features/dashboard/actions";
 import type { MemberProfileDetail } from "@/features/dashboard/types";
@@ -176,6 +176,8 @@ export function ProfileActions({
   } else {
     const sent = viewer.interest_sent && viewer.interest_sent.status !== "withdrawn" ? viewer.interest_sent : null;
     const received = viewer.interest_received && viewer.interest_received.status !== "withdrawn" ? viewer.interest_received : null;
+    // Messaging follows an accepted interest either way; the API checks the rest (membership, who wrote first).
+    const accepted = sent?.status === "accepted" || received?.status === "accepted";
     actions = (
       <>
         {received ? (
@@ -198,6 +200,12 @@ export function ProfileActions({
             <HeartIcon className="size-5" />
             {busy ? "Sending…" : "Send Interest"}
           </button>
+        )}
+        {accepted && (
+          <Link href={`/dashboard/messages/${profileCode}`} className={cn(secondary, "min-[420px]:col-span-2")}>
+            <MessagesIcon className="size-5" />
+            Send message
+          </Link>
         )}
         <button
           type="button"

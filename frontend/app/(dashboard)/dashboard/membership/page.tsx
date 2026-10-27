@@ -2,12 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 
-import { CheckIcon } from "@/components/ui/icons";
+import { AssistanceCard } from "@/features/dashboard/components/assistance-card";
+import { EntitlementList } from "@/features/dashboard/components/entitlement-list";
 import { CalendarIcon, CrownIcon, LifebuoyIcon } from "@/features/dashboard/components/icons";
 import { Badge, Card, Notice, PageHeader, primaryButton, secondaryButton } from "@/features/dashboard/components/ui";
 import { formatDate, subscriptionStatus } from "@/features/dashboard/format";
 import { STATIC_EXPORT } from "@/features/dashboard/preview-flag";
-import { getMembership, getPurchases } from "@/features/dashboard/server-api";
+import { VerificationCard } from "@/features/dashboard/components/verification-card";
+import { getMembership, getOwnProfile, getPurchases } from "@/features/dashboard/server-api";
 import type { Subscription } from "@/features/dashboard/types";
 import { getPackages } from "@/features/packages/api";
 import { formatInr, validityLabel } from "@/features/packages/packages";
@@ -17,6 +19,8 @@ import { cn } from "@/lib/utils";
 export const metadata: Metadata = { title: "Membership & Upgrade" };
 
 const DAY = 24 * 60 * 60 * 1000;
+/** From this many days before a membership ends, the page suggests renewing. */
+const RENEWAL_NOTICE_DAYS = 14;
 
 /**
  * Share of the validity period used and days left, from the subscription's real
@@ -37,7 +41,12 @@ function validity(subscription: Subscription) {
  * member's own membership API.
  */
 export default async function MembershipPage() {
-  const [membership, catalogue, purchases] = await Promise.all([getMembership(), getPackages(), getPurchases(1)]);
+  const [membership, catalogue, purchases, profile] = await Promise.all([
+    getMembership(),
+    getPackages(),
+    getPurchases(1),
+    getOwnProfile("/dashboard/membership"),
+  ]);
   const { current, entitlements } = membership;
   const online = membership.online_payment_available;
   const packages = catalogue.ok ? catalogue.packages : [];
@@ -51,6 +60,9 @@ export default async function MembershipPage() {
   // (The static GitHub Pages preview can only use its build date.)
   if (!STATIC_EXPORT) await connection();
   const period = current ? validity(current) : null;
+  // The latest paid membership that has run out, when there's no current one: prompt to renew it.
+  const lapsed = current ? null : membership.history.find((item) => item.status === "expired");
+  const contactsUsedUp = entitlements.contact_view_limit !== null && entitlements.contact_views_remaining === 0;
 
   return (
     <>
@@ -98,11 +110,14 @@ export default async function MembershipPage() {
                       <dt className="text-sm text-ivory/70">Valid until</dt>
                       <dd className="mt-0.5 font-semibold text-ivory">{formatDate(current.ends_at)}</dd>
                     </div>
-                    {current.contact_view_limit !== null && (
+                    {entitlements.contact_view_limit !== null && (
                       <div className="col-span-2">
-                        <dt className="text-sm text-ivory/70">Contact numbers viewed</dt>
+                        <dt className="text-sm text-ivory/70">Contact numbers remaining</dt>
                         <dd className="mt-0.5 font-semibold text-ivory tabular-nums">
-                          {current.contact_views_used ?? 0} of {current.contact_view_limit}
+                          {entitlements.contact_views_remaining} of {entitlements.contact_view_limit}
+                          <span className="ml-1.5 text-sm font-normal text-ivory/75">
+                            ({entitlements.contact_views_used ?? 0} viewed)
+                          </span>
                         </dd>
                       </div>
                     )}
@@ -150,38 +165,72 @@ export default async function MembershipPage() {
             </div>
           </section>
 
-          <Card
-            title={current && currentPackage ? "Included in your plan" : "How to upgrade"}
-            titleId="benefits-title"
-          >
-            {current && currentPackage ? (
-              <ul className="flex flex-col gap-2.5">
-                {currentPackage.benefits.map((benefit) => (
-                  <li key={benefit.title} className="flex items-start gap-2.5 text-[0.9375rem]">
-                    <span aria-hidden="true" className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
-                      <CheckIcon className="size-3.5" />
-                    </span>
-                    {benefit.title}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <ol className="flex flex-col gap-3 text-[0.9375rem]">
-                {(online
-                  ? ["Choose a package below.", "Pay securely online with Razorpay.", "Your membership is activated once the payment is confirmed, and we email your receipt."]
-                  : ["Choose a package below.", "Contact our team to arrange payment.", "Your membership is activated and appears here."]
-                ).map((text, index) => (
-                  <li key={text} className="flex items-start gap-3">
-                    <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-wine-600">
-                      {index + 1}
-                    </span>
-                    {text}
-                  </li>
-                ))}
-              </ol>
+          <Card title="What your plan includes now" titleId="benefits-title">
+            <EntitlementList entitlements={entitlements} />
+            {!current && (
+              <>
+                <h3 className="mt-6 border-t border-line pt-5 font-semibold">How to upgrade</h3>
+                <ol className="mt-3 flex flex-col gap-3 text-[0.9375rem]">
+                  {(online
+                    ? ["Choose a package below.", "Pay securely online with Razorpay.", "Your membership is activated once the payment is confirmed, and we email your receipt."]
+                    : ["Choose a package below.", "Contact our team to arrange payment.", "Your membership is activated and appears here."]
+                  ).map((text, index) => (
+                    <li key={text} className="flex items-start gap-3">
+                      <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-wine-600">
+                        {index + 1}
+                      </span>
+                      {text}
+                    </li>
+                  ))}
+                </ol>
+              </>
             )}
           </Card>
         </div>
+
+        {period && period.daysLeft <= RENEWAL_NOTICE_DAYS && (
+          <Notice role="status">
+            <strong className="font-semibold">
+              Your {current!.plan_name} ends on {formatDate(current!.ends_at)}.
+            </strong>{" "}
+            To keep your benefits without a break,{" "}
+            <Link href="/contact" className="font-medium text-wine-600 underline underline-offset-4">
+              contact us to renew
+            </Link>
+            .
+          </Notice>
+        )}
+        {lapsed && (
+          <Notice role="status">
+            <strong className="font-semibold">
+              Your {lapsed.plan_name} ended on {formatDate(lapsed.ends_at)}.
+            </strong>{" "}
+            You&apos;re now on Free membership. Choose a package below to renew its benefits.
+          </Notice>
+        )}
+        {contactsUsedUp && (
+          <Notice role="status">
+            <strong className="font-semibold">You&apos;ve viewed all {entitlements.contact_view_limit} contact numbers</strong>{" "}
+            included with your plan. Numbers you&apos;ve already viewed stay available. For more, please{" "}
+            <Link href="/contact" className="font-medium text-wine-600 underline underline-offset-4">
+              contact us about upgrading
+            </Link>
+            .
+          </Notice>
+        )}
+
+        {profile && (
+          <div className="grid items-start gap-6 lg:grid-cols-2">
+            <VerificationCard
+              status={profile.verification_status}
+              note={profile.verification_note}
+              verifiedAt={profile.verified_at}
+              eligible={entitlements.features.verification}
+              profileActive={profile.status === "active"}
+            />
+            <AssistanceCard assistance={membership.assistance} profileActive={profile.status === "active"} />
+          </div>
+        )}
 
         {!online ? (
           <Notice>

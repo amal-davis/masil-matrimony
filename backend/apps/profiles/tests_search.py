@@ -6,8 +6,11 @@ from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.accounts.roles import Role
+from apps.memberships.models import Subscription, SubscriptionStatus
+from apps.memberships.tests import subscribe
 
 from .choices import ProfileStatus, Visibility
 from .models import Profile
@@ -22,6 +25,8 @@ class SearchTestCase(TestCase):
         self.user = make_user()
         self.me = make_profile(self.user, gender="male", age=30)
         self.client = client_for(self.user)
+        # Every filter, including the advanced ones (AdvancedSearchAccessTests covers who may use them).
+        subscribe(self.user, "silver")
 
     def get(self, expect=200, **params):
         response = self.client.get(SEARCH, params)
@@ -100,6 +105,26 @@ class FindingProfilesTests(SearchTestCase):
             sorted([both.profile_code, religion_only.profile_code, tongue_only.profile_code]),
         )
         self.assertEqual(sorted(self.codes(mother_tongue="tamil,malayalam")), sorted(i["profile_code"] for i in either))
+
+    def test_age_and_height_ranges_combine_with_the_other_filters(self):
+        """What the search form's sliders send, alongside its dropdowns: every filter must match, ends included."""
+        fields = {"religion": "christian", "community": "latin-catholic", "district": "Ernakulam"}
+        at_low_ends = self.bride(age=25, height_cm=150, **fields)
+        at_high_ends = self.bride(age=32, height_cm=170, **fields)
+        misses = [
+            self.bride(age=24, height_cm=160, **fields),
+            self.bride(age=33, height_cm=160, **fields),
+            self.bride(age=28, height_cm=149, **fields),
+            self.bride(age=28, height_cm=171, **fields),
+            self.bride(age=28, height_cm=160, **{**fields, "community": "jacobite"}),
+            self.bride(age=28, height_cm=160, **{**fields, "district": "Thrissur"}),
+        ]
+        found = self.codes(
+            age_min=25, age_max=32, height_min=150, height_max=170,
+            religion="christian", caste="latin-catholic", location="ernakulam",
+        )
+        self.assertEqual(sorted(found), sorted([at_low_ends.profile_code, at_high_ends.profile_code]))
+        self.assertEqual(len(self.codes()), 2 + len(misses))
 
     def test_profiles_without_the_detail_do_not_match_a_filter_on_it(self):
         unstated = self.bride(height_cm=None, religion="", marital_status="")
@@ -223,3 +248,55 @@ class OrderingAndPaginationTests(SearchTestCase):
         for _ in range(6):
             self.bride()
         self.assertEqual(count(), few)
+
+
+class AdvancedSearchAccessTests(SearchTestCase):
+    """Basic filters for every member; the advanced ones (search.ADVANCED_FILTERS) need Silver, Gold or Diamond."""
+
+    ADVANCED = {"marital_status": "divorced", "mother_tongue": "tamil", "education": "MBBS", "occupation": "doctor"}
+
+    def setUp(self):
+        super().setUp()
+        Subscription.objects.filter(user=self.user).delete()  # back to Free
+        self.bride(religion="christian", community="latin-catholic", district="Ernakulam", marital_status="divorced")
+
+    def test_free_member_can_use_the_basic_filters(self):
+        body = self.get(
+            gender="female", age_min=20, age_max=40, height_min=150, height_max=190, religion="christian",
+            caste="latin-catholic", location="ernakulam",
+        )
+        self.assertEqual(body["count"], 1)
+        self.assertIs(body["advanced_search"], False)
+
+    def test_free_member_cannot_use_advanced_filters_by_calling_the_api(self):
+        for name, value in self.ADVANCED.items():
+            with self.subTest(filter=name):
+                body = self.get(expect=403, **{name: value})
+                self.assertEqual(body["code"], "upgrade_required")
+                self.assertEqual(body["feature"], "advanced_search")
+                self.assertEqual(body["filters"], [name])
+                self.assertNotIn("results", body)
+
+    def test_online_packages_include_advanced_search(self):
+        for code in ("silver", "gold", "diamond"):
+            with self.subTest(plan=code):
+                subscription = subscribe(self.user, code)
+                body = self.get(marital_status="divorced", mother_tongue="malayalam", education="b.tech")
+                self.assertIs(body["advanced_search"], True)
+                self.assertEqual(body["count"], 1)
+                subscription.delete()
+
+    def test_assisted_pending_and_expired_memberships_do_not(self):
+        cases = {
+            "platinum": SubscriptionStatus.ACTIVE, "royal": SubscriptionStatus.ACTIVE,
+            "silver": SubscriptionStatus.PENDING,
+        }
+        for code, state in cases.items():
+            with self.subTest(plan=code, status=state):
+                subscription = subscribe(self.user, code)
+                Subscription.objects.filter(pk=subscription.pk).update(status=state)
+                self.assertEqual(self.get(expect=403, marital_status="divorced")["code"], "upgrade_required")
+                subscription.delete()
+        expired = subscribe(self.user, "silver", starts_at=timezone.now() - timedelta(days=200))
+        self.assertFalse(expired.is_current)
+        self.get(expect=403, occupation="doctor")

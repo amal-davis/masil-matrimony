@@ -13,7 +13,8 @@ Razorpay webhooks (POST /api/v1/payments/razorpay/webhook/).
 - If Razorpay's API can't be reached, the event is answered with 503 so Razorpay
   retries it.
 
-Handled events: payment.authorized, payment.captured, payment.failed, order.paid.
+Handled events: payment.authorized, payment.captured, payment.failed, order.paid,
+and refund.created, refund.processed, payment.refunded (which record refunds).
 Others are acknowledged and ignored. Nothing from the payload (which includes
 the customer's email and phone) is logged.
 """
@@ -25,13 +26,17 @@ from django.db import transaction
 from django.utils import timezone
 
 from . import razorpay_api
-from .models import Purchase, WebhookEvent, WebhookStatus
+from .models import EventSource, Purchase, WebhookEvent, WebhookStatus
 from .razorpay_api import RazorpayError
 from .services import reconcile
 
 logger = logging.getLogger(__name__)
 
-HANDLED_EVENTS = {"payment.authorized", "payment.captured", "payment.failed", "order.paid"}
+HANDLED_EVENTS = {
+    "payment.authorized", "payment.captured", "payment.failed", "order.paid",
+    # Refunds made in Razorpay's dashboard: recorded on the purchase (the membership is left to staff).
+    "refund.created", "refund.processed", "payment.refunded",
+}
 
 
 def _order_id(payload: dict) -> str:
@@ -84,7 +89,7 @@ def handle(raw_body: bytes, signature: str, event_id: str) -> tuple[int, str]:
         finish(WebhookStatus.IGNORED, "No purchase for this order.")
         return 200, "Ignored."
     try:
-        purchase = reconcile(purchase)
+        purchase = reconcile(purchase, EventSource.WEBHOOK, None)
     except RazorpayError as exc:
         finish(WebhookStatus.FAILED, str(exc), purchase)
         logger.error("Webhook %s for purchase %s not processed: %s", event, purchase.reference, exc)

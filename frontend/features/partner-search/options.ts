@@ -15,15 +15,16 @@ export const lookingForOptions = [
   { value: "groom", label: "Groom" },
 ] as const satisfies readonly Option[];
 
+/** The age slider's scale, in whole years. The API accepts 18-80; the top of the scale means "no maximum". */
 export const AGE_RANGE = { min: 18, max: 70 } as const;
 
-export const ageOptions: Option[] = Array.from({ length: AGE_RANGE.max - AGE_RANGE.min + 1 }, (_, i) => {
-  const age = String(AGE_RANGE.min + i);
-  return { value: age, label: age };
-});
-
-/** 4′6″ to 6′6″ in one-inch steps; values are centimetres. */
+/**
+ * The height slider's scale in centimetres (4′6″ to 6′6″), the unit the API
+ * filters on (Profile.height_cm). Either end of the scale means "no limit".
+ */
 export const HEIGHT_RANGE_CM = { min: 137, max: 198 } as const;
+
+/** 4′6″ to 6′6″ in one-inch steps; values are centimetres. Used by the profile editor. */
 
 export const heightOptions: Option[] = Array.from({ length: 6 * 12 + 6 - (4 * 12 + 6) + 1 }, (_, i) => {
   const inches = 4 * 12 + 6 + i;

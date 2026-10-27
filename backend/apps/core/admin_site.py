@@ -75,7 +75,7 @@ def is_superuser(request):
 def _pending_counts(request):
     """Work waiting for staff, for the sidebar badges. Only for models the user may view."""
     from apps.enquiries.models import Enquiry
-    from apps.memberships.models import Subscription, SubscriptionStatus
+    from apps.memberships.models import AssistanceRequest, AssistanceStatus, Subscription, SubscriptionStatus
     from apps.profiles.choices import PhotoStatus, ProfileStatus
     from apps.profiles.models import Profile, ProfilePhoto
 
@@ -87,6 +87,18 @@ def _pending_counts(request):
         counts["photos"] = ProfilePhoto.objects.filter(status=PhotoStatus.PENDING).count()
     if user.has_perm("memberships.view_subscription"):
         counts["subscriptions"] = Subscription.objects.filter(status=SubscriptionStatus.PENDING).count()
+    if user.has_perm("memberships.assign_assistancerequest"):  # only those who assign need the count
+        counts["assistance"] = AssistanceRequest.objects.filter(status=AssistanceStatus.REQUESTED).count()
+    if user.has_perm("matchmaking.view_pendingrecommendation"):
+        from apps.matchmaking.models import MatchRecommendation, RecommendationStatus, ReviewStatus
+
+        counts["match_review"] = MatchRecommendation.objects.filter(
+            review_status=ReviewStatus.PENDING, status=RecommendationStatus.ACTIVE
+        ).count()
+    if user.has_perm("payments.view_purchase"):
+        from apps.payments.models import Purchase, PurchaseStatus
+
+        counts["purchases_review"] = Purchase.objects.filter(status=PurchaseStatus.NEEDS_REVIEW).count()
     if user.has_perm("enquiries.view_enquiry"):
         counts["enquiries"] = Enquiry.objects.filter(status=Enquiry.Status.NEW).count()
     return counts
@@ -129,6 +141,30 @@ def sidebar_navigation(request):
                 item("Shortlists", "bookmark", "admin:interactions_shortlist_changelist", can_view_shortlists),
                 item("Contact views", "contact_phone", "admin:interactions_contactview_changelist",
                      can_view_contact_views),
+                item("Matchmaking cases", "support_agent", "admin:memberships_assistancerequest_changelist",
+                     _can_view("memberships.view_assistancerequest"), "assistance"),
+                item("Contact exchanges", "handshake", "admin:memberships_contactexchange_changelist",
+                     _can_view("memberships.view_contactexchange")),
+                item("Consultations", "home", "admin:memberships_consultation_changelist",
+                     _can_view("memberships.view_consultation")),
+                item("Family coordination", "family_restroom", "admin:memberships_familycoordination_changelist",
+                     _can_view("memberships.view_familycoordination")),
+            ],
+        },
+        {
+            "title": "Matchmaking Management",
+            "separator": True,
+            "items": [
+                item("Auto-matched profiles", "join_inner", "admin:matchmaking_matchrecommendation_changelist",
+                     _can_view("matchmaking.view_matchrecommendation")),
+                item("Match review queue", "rule", "admin:matchmaking_pendingrecommendation_changelist",
+                     _can_view("matchmaking.view_pendingrecommendation"), "match_review"),
+                item("Mutual matches", "favorite", "admin:matchmaking_mutualmatch_changelist",
+                     _can_view("matchmaking.view_mutualmatch")),
+                item("Matchmaking analytics", "insights", "admin:matchmaking_analytics",
+                     _can_view("matchmaking.view_matchrecommendation")),
+                item("Generation runs", "history", "admin:matchmaking_matchrun_changelist",
+                     _can_view("matchmaking.view_matchrun")),
             ],
         },
         {
@@ -138,8 +174,15 @@ def sidebar_navigation(request):
                 item("Packages", "sell", "admin:memberships_membershippackage_changelist", can_view_packages),
                 item("Subscriptions", "workspace_premium", "admin:memberships_subscription_changelist",
                      can_view_subscriptions, "subscriptions"),
-                item("Online purchases", "payments", "admin:payments_purchase_changelist",
-                     _can_view("payments.view_purchase")),
+            ],
+        },
+        {
+            "title": "Membership Purchases",
+            "separator": True,
+            "items": [
+                item("Summary", "monitoring", "admin:payments_purchase_summary", _can_view("payments.view_purchase")),
+                item("Purchases", "payments", "admin:payments_purchase_changelist", _can_view("payments.view_purchase"),
+                     "purchases_review"),
                 item("Receipts", "receipt_long", "admin:payments_receipt_changelist", _can_view("payments.view_receipt")),
                 item("Razorpay webhooks", "webhook", "admin:payments_webhookevent_changelist",
                      _can_view("payments.view_webhookevent")),
@@ -197,7 +240,7 @@ def dashboard_callback(request, context):
     from apps.accounts.roles import Role
     from apps.enquiries.models import Enquiry
     from apps.interactions.models import Interest, InterestStatus
-    from apps.memberships.models import Subscription, SubscriptionStatus
+    from apps.memberships.models import AssistanceRequest, AssistanceStatus, Subscription, SubscriptionStatus
     from apps.memberships.models import MembershipPackage
     from apps.profiles.choices import PhotoStatus, ProfileStatus
     from apps.profiles.models import Profile, ProfilePhoto
@@ -205,7 +248,6 @@ def dashboard_callback(request, context):
     user = request.user
     week_ago = timezone.now() - timedelta(days=7)
     stats, panels = [], []
-    show_payments_notice = False
 
     if user.has_perm("accounts.view_user"):
         members = Role.MEMBER
@@ -246,8 +288,22 @@ def dashboard_callback(request, context):
         stats.append(_stat("Interests awaiting a reply",
                            Interest.objects.filter(status=InterestStatus.PENDING).count(), href=interests_url))
 
+    if user.has_perm("payments.view_purchase"):
+        from apps.payments import reporting
+
+        figures = reporting.summary()
+        purchases_url = reverse("admin:payments_purchase_changelist")
+        stats += [
+            _stat("Paid purchases", figures["paid"], href=reverse("admin:payments_purchase_summary"),
+                  note="Verified online payments"),
+            _stat("Pending payments", figures["pending"], href=f"{purchases_url}?membership=pending_payment"),
+            _stat("Payments needing review", figures["needs_review"], href=f"{purchases_url}?status__exact=needs_review"),
+        ]
+        if user.has_perm("payments.view_purchase_financials"):
+            stats.append(_stat("Collected this month", f"₹{figures['gross_month']:,.2f}",
+                               href=reverse("admin:payments_purchase_summary"), note="Live payments, fee + GST"))
+
     if user.has_perm("memberships.view_subscription"):
-        show_payments_notice = True
         subs_url = reverse("admin:memberships_subscription_changelist")
         current = Subscription.objects.current()
         stats += [
@@ -275,6 +331,13 @@ def dashboard_callback(request, context):
             empty="No subscriptions have been recorded yet.",
         ))
 
+    if user.has_perm("memberships.assign_assistancerequest"):  # only those who assign need the count
+        from apps.memberships.models import AssistanceRequest, AssistanceStatus
+
+        assistance_url = reverse("admin:memberships_assistancerequest_changelist")
+        stats.append(_stat("Matchmaking cases awaiting assignment",
+                           AssistanceRequest.objects.filter(status=AssistanceStatus.REQUESTED).count(),
+                           href=f"{assistance_url}?status__exact={AssistanceStatus.REQUESTED}"))
     if user.has_perm("enquiries.view_enquiry"):
         enquiries_url = reverse("admin:enquiries_enquiry_changelist")
         stats.append(_stat("New enquiries", Enquiry.objects.filter(status=Enquiry.Status.NEW).count(),
@@ -292,7 +355,5 @@ def dashboard_callback(request, context):
     context.update({
         "dashboard_stats": stats,
         "dashboard_panels": panels,
-        # There is no payment gateway or payment model yet (apps/payments is a placeholder).
-        "show_payments_notice": show_payments_notice,
     })
     return context

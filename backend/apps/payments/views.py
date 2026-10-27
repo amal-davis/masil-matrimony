@@ -20,7 +20,7 @@ from apps.accounts.permissions import IsMember
 from apps.memberships.plans import PackageCode
 
 from . import services, webhooks
-from .models import Purchase, PurchaseStatus, Receipt
+from .models import EventSource, Purchase, PurchaseStatus, Receipt
 from .razorpay_api import RazorpayError
 from .receipts import receipt_data
 
@@ -235,7 +235,7 @@ class RefreshPaymentView(APIView):
         purchase = own_purchase(request, reference)
         if purchase.status in CHECKABLE and purchase.razorpay_order_id:
             try:
-                services.reconcile(purchase)
+                services.reconcile(purchase, EventSource.MEMBER_CHECK)
             except RazorpayError as exc:
                 logger.error("Purchase %s: status check failed: %s", purchase.reference, exc)
                 return Response(

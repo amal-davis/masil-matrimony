@@ -79,6 +79,10 @@ export interface OwnProfile {
   /** The member agreed to appear on the public homepage if staff highlight the profile. */
   homepage_consent: boolean;
   partner_preference: PartnerPreference;
+  verification_status: VerificationStatus;
+  verification_requested_at: string | null;
+  verification_note: string;
+  verified_at: string | null;
 }
 
 export type OwnProfileField = Exclude<
@@ -126,6 +130,8 @@ export interface MemberCard {
   location: { city: string; district: string; state: string; country: string };
   photo: PhotoRef | null;
   photos_hidden: boolean;
+  /** Massil staff verified this member's identity (the Verified badge). */
+  verified: boolean;
 }
 
 /** How a match fits the member's partner preferences (GET /profiles/matches/). */
@@ -188,21 +194,189 @@ export interface Subscription {
   contact_views_used: number | null;
 }
 
-/** What the member's current membership allows, decided by the backend. */
+/** Plan-restricted features (backend/apps/memberships/entitlements.py, FEATURE_PACKAGES). */
+export type PlanFeature =
+  | "photo_viewing"
+  | "advanced_search"
+  | "messaging"
+  | "profile_viewers"
+  | "verification"
+  | "priority_visibility"
+  | "matchmaking_assistance";
+
+/** Included features the business can switch off platform-wide ("subject to availability"). */
+export type AvailabilityFeature = "priority_visibility" | "matchmaking_assistance";
+
+/**
+ * What the member's current membership allows, decided by the backend from their
+ * confirmed, in-period subscription. The pages show these values; they never decide them.
+ */
 export interface Entitlements {
   package_code: PackageCode;
+  package_name: string;
+  is_paid: boolean;
+  features: Record<
+    PlanFeature | "unlimited_interests" | "contact_access" | "basic_search" | "shortlist" | "match_suggestions",
+    boolean
+  >;
   /** Null = unlimited. */
   outgoing_interest_limit: number | null;
   /** Counted only while on a package with a limit (Free). */
   outgoing_interests_used: number | null;
   contact_view_limit: number | null;
+  contact_views_used: number | null;
+  contact_views_remaining: number | null;
+  /** Features the package includes but that are currently unavailable. */
+  unavailable: AvailabilityFeature[];
+}
+
+/** A 403 for a feature the member's package doesn't include. */
+export interface UpgradeRequired {
+  detail: string;
+  code: "upgrade_required";
+  feature: PlanFeature;
 }
 
 export interface MembershipInfo {
   current: Subscription | null;
   history: Subscription[];
   entitlements: Entitlements;
+  assistance: AssistanceInfo;
   online_payment_available: boolean;
+}
+
+export type AssistanceStatus =
+  | "requested"
+  | "assigned"
+  | "in_progress"
+  | "awaiting_member"
+  | "follow_up"
+  | "on_hold"
+  | "completed"
+  | "unavailable"
+  | "cancelled"
+  | "expired"
+  | "requirements"
+  | "curation"
+  | "awaiting_review"
+  | "family"
+  | "consult_requested"
+  | "consult_scheduled";
+
+/** A matchmaking-assistance request (backend/apps/memberships/assistance.py). */
+export interface AssistanceRequestItem {
+  id: string;
+  /** "request": a Gold/Diamond request. "service": the Platinum assisted-matchmaking case. */
+  kind: "request" | "service";
+  status: AssistanceStatus;
+  status_label: string;
+  is_open: boolean;
+  member_note: string;
+  requested_at: string;
+  /** True only once staff assigned someone. */
+  assigned: boolean;
+  matchmaker_name: string | null;
+  assigned_at: string | null;
+  closed_at: string | null;
+  /** From staff, e.g. why the service is unavailable. */
+  message: string;
+  /** The membership that includes the service is current. */
+  service_active: boolean;
+  service_starts_at: string | null;
+  service_ends_at: string | null;
+  package_code: PackageCode;
+}
+
+export interface CaseFollowUp {
+  action: string;
+  due_on: string | null;
+  status: "scheduled" | "done" | "cancelled";
+  status_label: string;
+  awaiting_member: boolean;
+}
+
+export interface CaseSuggestion {
+  /** Null once the profile is no longer visible: no details are kept on the page. */
+  profile: MemberCard | null;
+  status: "shared" | "interested" | "declined" | "no_longer_available";
+  shared_at: string | null;
+  response: "pending" | "interested" | "not_interested";
+}
+
+export type ConsultationStatus = "requested" | "proposed" | "scheduled" | "completed" | "cancelled" | "unavailable";
+
+/** An at-home consultation (Royal). The address is never returned, only whether one was given. */
+export interface Consultation {
+  id: string;
+  status: ConsultationStatus;
+  status_label: string;
+  member_note: string;
+  location_provided: boolean;
+  scheduled_for: string | null;
+  confirmed_at: string | null;
+  completed_at: string | null;
+  message: string;
+  requested_at: string;
+}
+
+/** A family member the member permits their matchmaker to coordinate with (Royal). */
+export interface FamilyContact {
+  id: string;
+  name: string;
+  relationship: string;
+  /** Last digits only. */
+  phone_hint: string;
+  purpose: string;
+  permission: "pending" | "granted" | "withdrawn";
+  permission_label: string;
+  statement: string;
+  granted_at: string | null;
+  withdrawn_at: string | null;
+  actions: { action: string; created_at: string }[];
+}
+
+export type ExchangeStatus = "pending" | "shared" | "declined" | "cancelled";
+export type ConsentDecision = "pending" | "granted" | "declined" | "withdrawn";
+
+/** A matchmaker-proposed exchange of mobile numbers, as one of its two members sees it. */
+export interface ContactExchangeItem {
+  id: string;
+  status: ExchangeStatus;
+  status_label: string;
+  purpose: string;
+  /** Exactly what this member is asked to agree to. */
+  statement: string;
+  shares: string;
+  my_decision: ConsentDecision;
+  created_at: string;
+  shared_at: string | null;
+  profile: MemberCard;
+  /** Only once both members consented. */
+  phone_number: string | null;
+}
+
+/** One case with what staff chose to show the member. Never internal notes. */
+export interface AssistanceCase extends AssistanceRequestItem {
+  features: { contact_exchange: boolean; consultations: boolean; family: boolean };
+  /** The member's own words; the plan and next steps are the matchmaker's. */
+  requirements: string;
+  service_plan: string;
+  next_steps: string;
+  consultations: Consultation[];
+  family: FamilyContact[];
+  updates: { body: string; created_at: string }[];
+  follow_ups: CaseFollowUp[];
+  suggestions: CaseSuggestion[];
+  exchanges: ContactExchangeItem[];
+}
+
+export interface AssistanceInfo {
+  /** The current membership includes assistance (Gold, Diamond) or is the assisted service (Platinum). */
+  included: boolean;
+  /** May ask with the request form (Gold, Diamond). Platinum's case opens with the membership. */
+  can_request: boolean;
+  available: boolean;
+  requests: AssistanceRequestItem[];
 }
 
 export type ContactAccess =
@@ -211,6 +385,7 @@ export type ContactAccess =
   | "profile_not_active"
   | "not_included"
   | "not_shared"
+  | "same_gender"
   | "limit_reached"
   | "no_number";
 
@@ -255,7 +430,46 @@ export interface DashboardSummary {
     accepted: number;
   } | null;
   shortlisted: number;
+  /** Messages to the member they haven't opened yet. */
+  unread_messages: number;
+  /** How many members viewed the profile; who they are needs the profile_viewers feature. */
+  profile_viewers: number;
+  verification: { status: VerificationStatus; note: string; verified_at: string | null } | null;
+  entitlements: Entitlements;
   recent_interests: InterestItem[];
+}
+
+export type VerificationStatus = "not_requested" | "requested" | "verified" | "declined";
+
+/** GET /messages/: one conversation in the member's inbox. */
+export interface ConversationItem {
+  profile: OtherMember;
+  last_message: ChatMessage | null;
+  unread: number;
+  updated_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  body: string;
+  sent_at: string;
+  mine: boolean;
+  read_at: string | null;
+}
+
+export type MessagingAccess = "available" | "profile_not_active" | "unavailable" | "interest_required" | "upgrade_required";
+
+/** GET /messages/<code>/: the messages (newest first) and whether the member may write now. */
+export interface ConversationPage extends Paginated<ChatMessage> {
+  profile: OtherMember;
+  messaging: { can_send: boolean; code: MessagingAccess; message: string };
+}
+
+/** GET /profile-views/: a member who viewed the signed-in member's profile. */
+export interface ProfileViewerItem {
+  profile: MemberCard & { available: true };
+  last_viewed_at: string;
+  visits: number;
 }
 
 /** GET /dashboard/shell-data (Next.js route): live values for the dashboard frame. */
@@ -266,6 +480,7 @@ export interface ShellData {
   membership: string | null;
   unreadNotifications: number;
   awaitingReply: number;
+  unreadMessages: number;
 }
 
 /** GET /profiles/<code>/: another member's full profile, privacy-filtered. */

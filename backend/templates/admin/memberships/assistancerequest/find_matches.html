@@ -1,0 +1,82 @@
+{% extends "admin/base_site.html" %}
+{% load unfold %}
+
+{% comment %}
+    Personalised search for a matchmaking case (AssistanceRequestAdmin.find_matches_view):
+    the member's matches from their saved partner preferences, or a search with filters,
+    run as that member. No contact details are shown here.
+{% endcomment %}
+
+{% block content %}
+    <div class="flex flex-col gap-4">
+        <p>
+            <a class="text-primary-600 underline" href="{% url 'admin:memberships_assistancerequest_change' case.pk %}">Back to the case</a>
+        </p>
+
+        <form method="get" class="border border-base-200 rounded-default p-4 dark:border-base-800 flex flex-col gap-3">
+            <fieldset class="flex flex-wrap gap-4">
+                <label><input type="radio" name="mode" value="preferences" {% if mode == "preferences" %}checked{% endif %}> Saved partner preferences (best match first)</label>
+                <label><input type="radio" name="mode" value="filters" {% if mode == "filters" %}checked{% endif %}> Search with filters</label>
+            </fieldset>
+            <div class="grid gap-3 md:grid-cols-4">
+                <label class="flex flex-col gap-1">Age from <input class="border rounded px-2 py-1" name="age_min" value="{{ query.age_min }}"></label>
+                <label class="flex flex-col gap-1">Age to <input class="border rounded px-2 py-1" name="age_max" value="{{ query.age_max }}"></label>
+                <label class="flex flex-col gap-1">Height from (cm) <input class="border rounded px-2 py-1" name="height_min" value="{{ query.height_min }}"></label>
+                <label class="flex flex-col gap-1">Height to (cm) <input class="border rounded px-2 py-1" name="height_max" value="{{ query.height_max }}"></label>
+                <label class="flex flex-col gap-1">Religion <input class="border rounded px-2 py-1" name="religion" value="{{ query.religion }}" placeholder="hindu, christian, muslim, other"></label>
+                <label class="flex flex-col gap-1">Community code <input class="border rounded px-2 py-1" name="caste" value="{{ query.caste }}"></label>
+                <label class="flex flex-col gap-1">Location <input class="border rounded px-2 py-1" name="location" value="{{ query.location }}" placeholder="thrissur, rest-of-india, abroad"></label>
+                <label class="flex flex-col gap-1">Marital status <input class="border rounded px-2 py-1" name="marital_status" value="{{ query.marital_status }}" placeholder="never_married, divorced"></label>
+                <label class="flex flex-col gap-1">Mother tongue <input class="border rounded px-2 py-1" name="mother_tongue" value="{{ query.mother_tongue }}"></label>
+                <label class="flex flex-col gap-1">Education <input class="border rounded px-2 py-1" name="education" value="{{ query.education }}"></label>
+                <label class="flex flex-col gap-1">Occupation <input class="border rounded px-2 py-1" name="occupation" value="{{ query.occupation }}"></label>
+            </div>
+            <div>
+                {% component "unfold/components/button.html" with submit=1 %}Search{% endcomponent %}
+            </div>
+            {% if errors %}
+                <ul class="text-red-600">
+                    {% for field, messages in errors.items %}<li>{{ field }}: {{ messages|join:" " }}</li>{% endfor %}
+                </ul>
+            {% endif %}
+        </form>
+
+        <form method="post" class="border border-base-200 rounded-default dark:border-base-800">
+            {% csrf_token %}
+            {% if rows %}
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left">
+                            <th class="p-2">Suggest</th><th class="p-2">Matrimony ID</th><th class="p-2">Name</th>
+                            <th class="p-2">Age</th><th class="p-2">Religion / community</th><th class="p-2">Location</th>
+                            <th class="p-2">Education</th><th class="p-2">Occupation</th><th class="p-2">Match score</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in rows %}
+                            <tr class="border-t border-base-200 dark:border-base-800">
+                                <td class="p-2">
+                                    {% if row.suggested %}Already suggested{% else %}<input type="checkbox" name="profile" value="{{ row.profile.pk }}" aria-label="Suggest {{ row.profile.profile_code }}">{% endif %}
+                                </td>
+                                <td class="p-2"><a class="underline" href="{% url 'admin:profiles_profile_change' row.profile.pk %}">{{ row.profile.profile_code }}</a></td>
+                                <td class="p-2">{{ row.profile.display_name }}</td>
+                                <td class="p-2">{{ row.profile.age }}</td>
+                                <td class="p-2">{{ row.profile.get_religion_display }}{% if row.profile.community %} / {{ row.profile.community }}{% endif %}</td>
+                                <td class="p-2">{{ row.profile.district|default:row.profile.city }}{% if row.profile.country %}, {{ row.profile.country }}{% endif %}</td>
+                                <td class="p-2">{{ row.profile.highest_education }}</td>
+                                <td class="p-2">{{ row.profile.occupation }}</td>
+                                <td class="p-2">{% if row.score is not None %}{{ row.score }}%{% else %}—{% endif %}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <div class="p-4 border-t border-base-200 dark:border-base-800">
+                    {% component "unfold/components/button.html" with submit=1 %}Add selected as suggestions{% endcomponent %}
+                    <p class="mt-2 text-sm">Suggestions stay internal until you tick “Shared with member” on the case.</p>
+                </div>
+            {% else %}
+                <p class="p-4">No eligible profiles match. Only approved, visible profiles of the gender the member is looking for are shown.</p>
+            {% endif %}
+        </form>
+    </div>
+{% endblock %}

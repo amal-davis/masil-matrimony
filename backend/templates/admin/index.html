@@ -28,15 +28,6 @@
             </section>
         {% endif %}
 
-        {% if show_payments_notice %}
-            <div role="note" class="border border-base-200 rounded-default px-4 py-3 text-sm dark:border-base-800">
-                <strong class="font-semibold text-font-important-light dark:text-font-important-dark">Payments:</strong>
-                no payment gateway is connected yet, so there are no payment transactions, failed payments or refunds
-                to show. Record a subscription after confirming an offline payment, then use
-                &ldquo;Activate&rdquo; on the Subscriptions page.
-            </div>
-        {% endif %}
-
         {% if dashboard_panels %}
             <div class="grid gap-6 lg:grid-cols-2">
                 {% for panel in dashboard_panels %}

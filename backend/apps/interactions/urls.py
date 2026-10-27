@@ -2,6 +2,9 @@ from django.urls import path
 
 from .views import (
     ContactNumberView,
+    ConversationListView,
+    ConversationView,
+    ProfileViewersView,
     InterestActionView,
     ReceivedInterestsView,
     SendInterestView,
@@ -24,4 +27,7 @@ urlpatterns = [
     path("shortlist/", ShortlistView.as_view(), name="shortlist"),
     path("shortlist/<str:profile_code>/", ShortlistEntryView.as_view(), name="shortlist-entry"),
     path("profiles/<str:profile_code>/contact/", ContactNumberView.as_view(), name="contact-number"),
+    path("messages/", ConversationListView.as_view(), name="conversations"),
+    path("messages/<str:profile_code>/", ConversationView.as_view(), name="conversation"),
+    path("profile-views/", ProfileViewersView.as_view(), name="profile-viewers"),
 ]

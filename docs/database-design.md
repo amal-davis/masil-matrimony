@@ -64,6 +64,8 @@ module is built.
   daughter, sibling, relative), gender, date_of_birth, marital_status, height, religion, caste,
   sub_caste, mother_tongue, location (country/state/district/city), about, status
   (`draft`, `pending_verification`, `active`, `hidden`, `suspended`), verified_at, verified_by.
+  Implemented as verification_status (`not_requested`, `requested`, `verified`, `declined`), verification_requested_at,
+  verification_note, verified_at, verified_by: identity verification for the Verified badge, decided by staff only.
 - **ProfileContact** (1:1 Profile): phone, alternate phone, email, address. Visible only to the
   owner, permitted members (per membership rules) and authorised staff; staff access is audited.
 - **EducationCareer**, **FamilyDetails**, **Horoscope** (optional).
@@ -82,16 +84,76 @@ module is built.
   Fees, tax, validity and limits need the `change_package_terms` permission.
 - **Subscription** (implemented): user, plan_code, status, starts_at, ends_at, and the terms copied from the
   package when recorded (package_fee, validity_months, contact_view_limit), contact_views_used. Planned: payment.
+- **AssistanceRequest** (implemented): a Gold/Diamond member's matchmaking-assistance request: user, subscription
+  (the membership that included it), status (`requested`, `assigned`, `in_progress`, `completed`,
+  `unavailable`), member_note, assigned_to (staff user), assigned_at, closed_at, member_message (shown to the
+  member), staff_note (internal). One open request per member (enforced in `apps/memberships/assistance.py`).
+- **AssistanceEvent** (implemented): append-only history of an AssistanceRequest: status, assigned_to,
+  changed_by, created_at.
+- AssistanceRequest also has `kind`: `request` (Gold/Diamond) or `service` (the Platinum case, opened once per
+  Platinum subscription when it is activated). Statuses also include `awaiting_member`, `follow_up`, `on_hold`,
+  `cancelled` and `expired`. Permission `assign_assistancerequest` = see every case and assign matchmakers;
+  other staff with `change_assistancerequest` see only cases assigned to them.
+- **AssistanceNote** (implemented): case, author, body, visible_to_member (unticked = internal), created_at.
+- **AssistanceFollowUp** (implemented): case, action, due_on, status (`scheduled`, `done`, `cancelled`),
+  awaiting_member, outcome (internal), visible_to_member, created_by, completed_at.
+- **AssistanceCandidate** (implemented): case, profile, added_by, staff_note (internal), shared_with_member,
+  shared_at, member_response (`pending`, `interested`, `not_interested`); unique per (case, profile).
+- **ContactExchange** (implemented): a Platinum case's proposed exchange of mobile numbers with one other
+  member: case, other_profile, purpose, status (`pending`, `shared`, `declined`, `cancelled`),
+  initiated_by, shared_at, closed_at, cancelled_by. Stores no numbers.
+- Royal (also a `service` case, 12 months): AssistanceRequest adds service_plan and next_steps (staff, shown to
+  the member) beside member_note (the member's own requirements, which they can update; member_note_updated_at),
+  and Royal-only statuses `requirements`, `curation`, `awaiting_review`, `family`, `consult_requested`,
+  `consult_scheduled` (the last two need a recorded request / member-confirmed consultation; `family` needs a
+  permitted family contact).
+- **Consultation** (implemented): Royal case, status (`requested`, `proposed`, `scheduled` only after the
+  member confirms, `completed`, `cancelled`, `unavailable`), requested_by, member_note, address (restricted to
+  the case's staff; never returned by member APIs), scheduled_for, confirmed_at, completed_at, member_message,
+  outcome (internal). **ConsultationEvent**: append-only status and reschedule history.
+- **FamilyContact** (implemented): Royal case, name, relationship, phone_number (case staff only; members see the
+  last digits), purpose, permission (`pending`, `granted`, `withdrawn`; only the member grants or withdraws),
+  statement (exact text agreed), granted_at, withdrawn_at, added_by. **FamilyCoordination**: an action recorded
+  by staff while permission is granted: action, outcome (internal), visible_to_member, staff, created_at.
+- **ContactConsent** (implemented): exchange, profile, statement (the exact text shown), decision (`pending`,
+  `granted`, `declined`, `withdrawn`), decided_at, number_seen_at (the disclosure record); unique per
+  (exchange, profile).
+
+### matchmaking
+- **MatchRecommendation** (implemented): one direction, "candidate suits member's partner preferences", from
+  apps.profiles.matching: member, candidate (unique pair, never self), score (0-100), reasons, mismatched,
+  not_stated, reverse_must_haves_met, algorithm_version, fingerprint (hash of the data evaluated), status
+  (`active`, `stale`, `ineligible`), review_status (`not_required`, `pending`, `approved`, `flagged`,
+  `dismissed`), reviewed_by, reviewed_at, review_note, hidden_by_member_at, first_generated_at,
+  last_evaluated_at. Never deleted by regeneration. Proxy **PendingRecommendation** = the review queue.
+- **MatchPair** (implemented): one per unordered pair (profile_low < profile_high), links low_to_high and
+  high_to_low; mutual = both directions current; mutual_since. Proxy **MutualMatch**. Interests are read live,
+  never stored here.
+- **ReviewEvent** (implemented): append-only review history (staff null = re-queued after a data change).
+- **MatchRun** (implemented): each generation run with its counts.
 
 ### payments
-- **PaymentOrder**: user, plan, amount, currency, status, gateway, gateway_order_id.
-- **PaymentTransaction**: order, gateway_payment_id, status, raw_response (sanitised), verified signature flag.
-- **Invoice**, **Refund**.
+- **Purchase** (implemented): one Razorpay order for one package, with a snapshot of what was sold (package
+  code and name, validity, contact limit, tax treatment, fee, GST rate and amount, total, paise, currency) and
+  the billing contact; status (`awaiting_payment`, `authorized`, `paid`, `failed`, `needs_review`,
+  `order_failed`), mode (test/live), razorpay_order_id, razorpay_payment_id, paid_at, subscription (set once, when
+  paid), refund_status (`none`, `partial`, `full`), refunded_amount_subunits, refunded_at (as reported by
+  Razorpay; refunds are made in Razorpay's dashboard). Permissions `view_purchase_financials` and
+  `export_purchase`. There are no discounts.
+- **RazorpayPayment** (implemented): each payment attempt Razorpay reports for an order, with
+  amount_refunded_subunits.
+- **PurchaseEvent** (implemented): append-only history of a purchase's payment and refund status, the source
+  (order, checkout callback, webhook, member or staff status check) and the staff member for staff checks.
+- **Receipt**, **ReceiptSequence**, **WebhookEvent** (implemented). No signatures, card data or secrets are stored.
 
 ### interactions
 - **Interest**: sender, receiver, status (`pending`, `accepted`, `declined`, `withdrawn`), message;
   unique per (sender, receiver).
-- **Shortlist**, **ProfileView**, **Block**, **ProfileReport** (with moderation status).
+- **Shortlist** (implemented), **Block**, **ProfileReport** (with moderation status).
+- **ProfileView** (implemented): viewer, profile, first_viewed_at, last_viewed_at, visits; one per (viewer,
+  profile); a visit counts again only after 30 minutes.
+- **Conversation** (implemented): member_a < member_b (one per pair), started_by, last_message_at.
+  **Message**: conversation, sender, body (≤ 2000), created_at, read_at.
 - **ContactView** (implemented): subscription, viewer, profile; one per (subscription, profile), so a limit
   counts different members per subscription. Interest.counts_toward_free_limit marks interests that count
   toward the Free package's limit.

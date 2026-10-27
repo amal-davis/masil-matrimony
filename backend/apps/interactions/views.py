@@ -2,12 +2,14 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
 from rest_framework.response import Response
 
+from apps.memberships.entitlements import Feature, entitlements_for, upgrade_required
 from apps.profiles.models import Profile
 from apps.profiles.serializers import card_data
+from apps.profiles.services import accepted_partner_ids
 from apps.profiles.views import MemberAPIView, own_profile, paginated, private_response
 
-from . import services
-from .models import Interest, InterestStatus, Shortlist
+from . import messaging, profile_views, services
+from .models import Interest, InterestStatus, Message, Shortlist
 
 
 def other_member(viewer: Profile, other: Profile, request) -> dict:
@@ -25,6 +27,14 @@ def interest_data(viewer: Profile, interest: Interest, other: Profile, request) 
         "responded_at": interest.responded_at,
         "profile": other_member(viewer, other, request),
     }
+
+
+def private_paginated(view, queryset, to_data) -> Response:
+    """A page of per-member data that no shared cache may store."""
+    response = paginated(view, queryset, to_data)
+    response["Cache-Control"] = "private, no-store"
+    response["Vary"] = "Authorization, Cookie"
+    return response
 
 
 def error_response(error: services.InteractionError) -> Response:
@@ -162,3 +172,124 @@ class ContactNumberView(MemberAPIView):
         except services.InteractionError as error:
             return error_response(error)
         return private_response({**summary, "phone_number": phone_number})
+
+
+# --------------------------------------------------------------------------
+# Personal messages (apps.interactions.messaging)
+# --------------------------------------------------------------------------
+
+
+def message_data(message, me: Profile) -> dict:
+    return {
+        "id": str(message.public_id),
+        "body": message.body,
+        "sent_at": message.created_at,
+        "mine": message.sender_id == me.pk,
+        "read_at": message.read_at,
+    }
+
+
+def conversation_member(me: Profile, profile_code: str) -> Profile:
+    """The other member of a conversation by Matrimony ID, if they're someone `me` could ever have written to."""
+    other = (
+        Profile.objects.select_related("user")
+        .filter(profile_code=profile_code.upper())
+        .exclude(pk=me.pk)
+        .first()
+    )
+    if other is None or not (
+        Profile.objects.discoverable().filter(pk=other.pk).exists() or messaging.conversation_between(me, other)
+    ):
+        raise services.InteractionError("Conversation not found.", code="not_found", status=404)
+    return other
+
+
+class MessageBodySerializer(serializers.Serializer):
+    body = serializers.CharField(max_length=messaging.MAX_LENGTH, trim_whitespace=True)
+
+
+class ConversationListView(MemberAPIView):
+    """The member's conversations, latest first, with the other member and the last message."""
+
+    @extend_schema(tags=["messages"])
+    def get(self, request):
+        me = own_profile(request)
+
+        def item(conversation):
+            last = conversation.messages.first()
+            other = conversation.other(me)
+            return {
+                "profile": other_member(me, other, request),
+                "last_message": message_data(last, me) if last else None,
+                "unread": conversation.unread,
+                "updated_at": conversation.last_message_at,
+            }
+
+        return private_paginated(self, messaging.conversations_for(me), item)
+
+
+class ConversationView(MemberAPIView):
+    """
+    GET: the conversation with one member (newest messages first, paginated) and
+    whether the member may write now; marks the other member's messages as read.
+    POST {body}: send a message.
+    """
+
+    throttle_scope = "message_send"
+
+    def get_throttles(self):
+        return super().get_throttles() if self.request.method == "POST" else []
+
+    @extend_schema(tags=["messages"])
+    def get(self, request, profile_code):
+        me = own_profile(request)
+        try:
+            other = conversation_member(me, profile_code)
+        except services.InteractionError as error:
+            return error_response(error)
+        conversation = messaging.conversation_between(me, other)
+        if conversation is not None and request.query_params.get("page", "1") == "1":
+            messaging.mark_read(conversation, me)
+        queryset = conversation.messages.all() if conversation else Message.objects.none()
+        response = private_paginated(self, queryset, lambda message: message_data(message, me))
+        response.data["profile"] = other_member(me, other, request)
+        response.data["messaging"] = messaging.access_data(messaging.messaging_access(me, other, conversation))
+        return response
+
+    @extend_schema(request=MessageBodySerializer, tags=["messages"])
+    def post(self, request, profile_code):
+        me = own_profile(request)
+        try:
+            other = conversation_member(me, profile_code)
+            message = messaging.send_message(me, other, request.data.get("body"))
+        except services.InteractionError as error:
+            return error_response(error)
+        return private_response(message_data(message, me), status.HTTP_201_CREATED)
+
+
+# --------------------------------------------------------------------------
+# Who viewed my profile (apps.interactions.profile_views)
+# --------------------------------------------------------------------------
+
+
+class ProfileViewersView(MemberAPIView):
+    """Members who viewed the signed-in member's profile, most recent first. Needs Feature.PROFILE_VIEWERS."""
+
+    @extend_schema(tags=["profile views"])
+    def get(self, request):
+        me = own_profile(request)
+        if not entitlements_for(request.user).has(Feature.PROFILE_VIEWERS):
+            return private_response(
+                {**upgrade_required(Feature.PROFILE_VIEWERS), "viewer_count": profile_views.viewer_count(me)},
+                status.HTTP_403_FORBIDDEN,
+            )
+        accepted = accepted_partner_ids(me)
+        return private_paginated(
+            self,
+            profile_views.viewers_of(me),
+            lambda view: {
+                "profile": {**card_data(me, view.viewer, request, accepted_ids=accepted), "available": True},
+                "last_viewed_at": view.last_viewed_at,
+                "visits": view.visits,
+            },
+        )

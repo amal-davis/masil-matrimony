@@ -1,22 +1,24 @@
 import type { ReactNode } from "react";
 
-import { UserIcon } from "@/components/ui/icons";
+import { MessagesIcon, PhoneIcon, UserIcon } from "@/components/ui/icons";
 
 import {
   BellIcon,
   BookmarkIcon,
   CameraIcon,
   CrownIcon,
+  EyeIcon,
   GearIcon,
   GridIcon,
   InboxIcon,
   LifebuoyIcon,
   SendIcon,
   SparkIcon,
+  UserCheckIcon,
 } from "./components/icons";
 
 /** Which real count, if any, a nav item shows as a badge (from GET /dashboard/shell-data). */
-export type BadgeKey = "awaitingReply" | "unreadNotifications";
+export type BadgeKey = "awaitingReply" | "unreadNotifications" | "unreadMessages";
 
 export interface DashboardNavItem {
   label: string;
@@ -57,6 +59,15 @@ export const dashboardNavGroups: DashboardNavGroup[] = [
       },
       { label: "Interests Sent", href: "/dashboard/interests/sent", icon: <SendIcon className={icon} /> },
       { label: "Shortlisted Profiles", href: "/dashboard/shortlisted", icon: <BookmarkIcon className={icon} /> },
+      {
+        label: "Messages",
+        href: "/dashboard/messages",
+        icon: <MessagesIcon className={icon} />,
+        badge: "unreadMessages",
+      },
+      { label: "Who Viewed My Profile", href: "/dashboard/profile-views", icon: <EyeIcon className={icon} /> },
+      { label: "Matchmaking Service", href: "/dashboard/matchmaking", icon: <UserCheckIcon className={icon} /> },
+      { label: "Contact Requests", href: "/dashboard/contact-requests", icon: <PhoneIcon className={icon} /> },
     ],
   },
   {

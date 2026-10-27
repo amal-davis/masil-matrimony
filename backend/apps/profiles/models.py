@@ -31,6 +31,7 @@ from .choices import (
     PhotoVisibility,
     ProfileStatus,
     Religion,
+    VerificationStatus,
     Visibility,
 )
 
@@ -144,6 +145,20 @@ class Profile(TimeStampedModel):
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
     )
 
+    # Identity verification for the Verified badge (apps.profiles.verification). Only staff
+    # decide it, after checking an identity document; paying for a membership never sets it.
+    verification_status = models.CharField(
+        max_length=16, choices=VerificationStatus.choices, default=VerificationStatus.NOT_REQUESTED, db_index=True
+    )
+    verification_requested_at = models.DateTimeField(null=True, blank=True)
+    verification_note = models.CharField(
+        max_length=255, blank=True, help_text="Shown to the member, e.g. why their identity couldn't be verified."
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
     objects = ProfileQuerySet.as_manager()
 
     class Meta:
@@ -159,6 +174,10 @@ class Profile(TimeStampedModel):
     @property
     def age(self) -> int:
         return age_on(self.date_of_birth)
+
+    @property
+    def is_verified(self) -> bool:
+        return self.verification_status == VerificationStatus.VERIFIED
 
     @property
     def identity_locked(self) -> bool:

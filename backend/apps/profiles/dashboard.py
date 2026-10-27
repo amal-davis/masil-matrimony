@@ -5,7 +5,8 @@ from rest_framework.response import Response
 
 from apps.interactions.models import Interest, InterestStatus, Shortlist
 from apps.interactions.views import interest_data
-from apps.memberships.views import current_subscription, subscription_data
+from apps.interactions import messaging, profile_views
+from apps.memberships.views import current_subscription, entitlements_data, subscription_data
 from apps.notifications.models import Notification
 from apps.notifications.views import notification_data
 
@@ -49,6 +50,8 @@ class DashboardSummaryView(MemberAPIView):
         data = {
             "member": {"first_name": user.first_name, "phone_verified": user.phone_verified_at is not None},
             "membership": subscription_data(subscription) if subscription else None,
+            # What the membership allows now (memberships.entitlements): the dashboard shows these, never its own guess.
+            "entitlements": entitlements_data(user),
             "notifications": {
                 "unread": notifications.filter(read_at=None).count(),
                 "recent": [notification_data(item) for item in notifications[:RECENT]],
@@ -56,6 +59,9 @@ class DashboardSummaryView(MemberAPIView):
             "profile": None,
             "interests": None,
             "shortlisted": 0,
+            "unread_messages": 0,
+            "profile_viewers": 0,
+            "verification": None,
             "recent_interests": [],
         }
         if profile is None:
@@ -76,6 +82,14 @@ class DashboardSummaryView(MemberAPIView):
         }
         data["interests"] = interest_counts(profile)
         data["shortlisted"] = Shortlist.objects.filter(owner=profile).count()
+        data["unread_messages"] = messaging.unread_count(profile)
+        # The number only; who they are needs Feature.PROFILE_VIEWERS (GET /profile-views/).
+        data["profile_viewers"] = profile_views.viewer_count(profile)
+        data["verification"] = {
+            "status": profile.verification_status,
+            "note": profile.verification_note,
+            "verified_at": profile.verified_at,
+        }
 
         recent = (
             Interest.objects.filter(Q(receiver=profile) | Q(sender=profile))

@@ -19,10 +19,12 @@ Two stages, kept apart so a high score can never outweigh a requirement.
    points. The score is the share of those points the candidate earns, as a
    whole percentage (0-100). Must-haves count too: every eligible candidate
    earns them. A detail the candidate hasn't stated earns nothing (missing data
-   is never treated as a match) and is listed under "not stated". Ties go to
-   the most recently approved profile, then the newest profile, so the order
-   is stable across pages. With no preferences filled in there is no score,
-   and the list is simply newest approved first.
+   is never treated as a match) and is listed under "not stated". Ties go
+   first to profiles with Priority Profile Visibility (Gold, Diamond;
+   apps.profiles.priority), then the most recently approved profile, then the
+   newest profile, so the order is stable across pages. With no preferences
+   filled in there is no score, and the list is priority first, then newest
+   approved.
 
 Mutual: a candidate is a mutual match when the member also meets every
 must-have the candidate has set (an unset or empty criterion restricts
@@ -47,6 +49,7 @@ from django.db.models import Case, IntegerField, Q, QuerySet, Value, When
 
 from .choices import Gender
 from .models import PartnerPreference, Profile
+from .priority import annotate_priority
 
 # --- Free-text terms ---------------------------------------------------------
 
@@ -305,8 +308,10 @@ def ranked_candidates(member: Profile, *, mutual_only: bool = False) -> QuerySet
 
     required = {criterion.key for criterion in must_have_criteria(pref)}
     optional = [criterion for criterion in configured_criteria(pref) if criterion.key not in required]
+    # Priority visibility (apps.profiles.priority) only orders equal matches.
+    queryset = annotate_priority(queryset)
     if not optional:
-        return queryset.order_by("-reviewed_at", "-pk")
+        return queryset.order_by("-priority", "-reviewed_at", "-pk")
     points = functools.reduce(
         operator.add,
         [
@@ -314,7 +319,7 @@ def ranked_candidates(member: Profile, *, mutual_only: bool = False) -> QuerySet
             for criterion in optional
         ],
     )
-    return queryset.annotate(match_points=points).order_by("-match_points", "-reviewed_at", "-pk")
+    return queryset.annotate(match_points=points).order_by("-match_points", "-priority", "-reviewed_at", "-pk")
 
 
 # --- Explanations -----------------------------------------------------------------
@@ -330,6 +335,9 @@ class MatchExplanation:
     not_stated: list[str] = field(default_factory=list)
     # The member also meets every must-have the candidate has set.
     mutual: bool = False
+    # Labels of preferred details the candidate stated but that don't match. For staff
+    # (apps.matchmaking); not part of the member's view (as_dict).
+    mismatched: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {"score": self.score, "reasons": self.reasons, "not_stated": self.not_stated, "mutual": self.mutual}
@@ -340,17 +348,20 @@ def explain(member: Profile, candidate: Profile) -> MatchExplanation:
     pref = preference_of(member)
     criteria = configured_criteria(pref)
     earned = 0
-    reasons, not_stated = [], []
+    reasons, not_stated, mismatched = [], [], []
     for criterion in criteria:
         if criterion.test(pref, candidate):
             earned += criterion.weight
             reasons.append(criterion.reason(pref))
         elif not criterion.stated(candidate):
             not_stated.append(criterion.label)
+        else:
+            mismatched.append(criterion.label)
     total = sum(criterion.weight for criterion in criteria)
     return MatchExplanation(
         score=round(100 * earned / total) if total else None,
         reasons=reasons,
         not_stated=not_stated,
         mutual=meets_must_haves(preference_of(candidate), member),
+        mismatched=mismatched,
     )

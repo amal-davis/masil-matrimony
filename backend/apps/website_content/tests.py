@@ -1,8 +1,11 @@
 """Success stories: admin workflow, image handling, the public API and access rules."""
 from datetime import timedelta
+from io import StringIO
 
 from django.contrib.auth.models import Permission
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -264,3 +267,42 @@ class ImageViewTests(StoryTestCase):
     def test_paragraph_helper(self):
         self.assertEqual(paragraphs(""), [])
         self.assertEqual(paragraphs("  one  \n\n\n two "), ["one", "two"])
+
+
+@override_settings(DEBUG=True)
+class SampleStoriesCommandTests(TempMediaMixin, TestCase):
+    """manage.py seed_sample_stories: fictional stories for local development only."""
+
+    def run_command(self, *args):
+        call_command("seed_sample_stories", *args, stdout=StringIO())
+
+    def test_adds_six_published_samples_with_images_and_is_safe_to_rerun(self):
+        real = SuccessStory.objects.create(title="Our story", summary="Real.", body="Real story.")
+        self.run_command()
+        self.run_command()
+
+        samples = SuccessStory.objects.filter(slug__startswith="sample-")
+        self.assertEqual(samples.count(), 6)
+        self.assertEqual(SuccessStory.objects.published().filter(slug__startswith="sample-").count(), 6)
+        for story in samples:
+            self.assertTrue(story.image and story.image_width and story.image_alt)
+            self.assertIn("sample story for local development", story.body)
+        response = self.client.get(LIST)
+        self.assertEqual(response.json()["count"], 6)  # the real story is still a draft
+        self.assertTrue(SuccessStory.objects.filter(pk=real.pk).exists())
+
+    def test_remove_deletes_only_the_samples(self):
+        real = SuccessStory.objects.create(title="Our story", summary="Real.", body="Real story.")
+        self.run_command()
+        storage = SuccessStory._meta.get_field("image").storage
+        names = [story.image.name for story in SuccessStory.objects.filter(slug__startswith="sample-")]
+
+        self.run_command("--remove")
+        self.assertEqual(list(SuccessStory.objects.all()), [real])
+        self.assertFalse(any(storage.exists(name) for name in names))
+
+    @override_settings(DEBUG=False)
+    def test_refuses_to_run_without_debug(self):
+        with self.assertRaises(CommandError):
+            self.run_command()
+        self.assertFalse(SuccessStory.objects.exists())

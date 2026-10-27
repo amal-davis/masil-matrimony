@@ -3,7 +3,6 @@ import { z } from "zod";
 import {
   AGE_RANGE,
   communitiesFor,
-  heightOptions,
   HEIGHT_RANGE_CM,
   locationOptions,
   lookingForOptions,
@@ -140,31 +139,42 @@ export function filtersFromQuery(query: QueryInput): Partial<PartnerSearchInput>
     const value = first(key);
     if (value && fields.shape[field].safeParse(value).success) values[field] = value;
   }
+  // A range whose minimum is above its maximum can't be shown on a slider: drop both ends.
+  for (const [low, high] of [
+    ["ageMin", "ageMax"],
+    ["heightMin", "heightMax"],
+  ] as const) {
+    if (values[low] && values[high] && +values[low] > +values[high]) {
+      delete values[low];
+      delete values[high];
+    }
+  }
   if (values.community && !communitiesFor(values.religion ?? "").some((c) => c.value === values.community)) {
     delete values.community;
   }
   return values;
 }
 
+/**
+ * A range filter as text: "25 – 40", "from 25", "up to 40", or "" when neither
+ * end is set. `unit` follows the numbers, e.g. "150 – 170 cm".
+ */
+export function formatRange(min?: string, max?: string, unit?: string): string {
+  const text = min && max ? `${min} – ${max}` : min ? `from ${min}` : max ? `up to ${max}` : "";
+  return text && unit ? `${text} ${unit}` : text;
+}
+
 /** Human-readable summary of the active filters, e.g. for a results heading. */
 export function describeFilters(values: Partial<PartnerSearchInput>): string[] {
   const label = (options: readonly Option[], value?: string) =>
     options.find((option) => option.value === value)?.label;
-  const range = (min?: string, max?: string, format: (v: string) => string = (v) => v) =>
-    min && max
-      ? `${format(min)} – ${format(max)}`
-      : min
-        ? `from ${format(min)}`
-        : max
-          ? `up to ${format(max)}`
-          : "";
-  const height = (cm: string) => label(heightOptions, cm) ?? `${cm} cm`;
+  const age = formatRange(values.ageMin, values.ageMax);
+  const height = formatRange(values.heightMin, values.heightMax, "cm");
 
   return [
     values.lookingFor && label(lookingForOptions, values.lookingFor),
-    range(values.ageMin, values.ageMax) && `Age ${range(values.ageMin, values.ageMax)}`,
-    range(values.heightMin, values.heightMax) &&
-      `Height ${range(values.heightMin, values.heightMax, height)}`,
+    age && `Age ${age}`,
+    height && `Height ${height}`,
     label(religionOptions, values.religion),
     label(communitiesFor(values.religion ?? ""), values.community),
     label(locationOptions, values.location),

@@ -44,6 +44,8 @@ function toProfileDetail(data: MemberProfileDetail): ProfileDetail {
     profession: orUndefined(data.occupation),
     photos: data.photos,
     photosHidden: data.photos_hidden,
+    // Only staff can verify a member (backend/apps/profiles/verification.py); never inferred here.
+    isVerified: data.verified === true,
     about: orUndefined(data.about),
     career: career && {
       qualification: orUndefined(career.qualification),

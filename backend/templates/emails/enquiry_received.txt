@@ -1,0 +1,15 @@
+{% autoescape off %}A new enquiry was sent through the contact form on the website.
+
+Name:     {{ enquiry.name }}
+Email:    {{ enquiry.email }}
+Phone:    {{ enquiry.phone }}
+Received: {{ enquiry.created_at|date:"j F Y, H:i" }}
+
+Message:
+{{ enquiry.message }}
+
+Reply to this email to answer {{ enquiry.name }} directly.
+{% if admin_url %}Open it in the admin: {{ admin_url }}
+{% endif %}
+Reference: {{ enquiry.public_id }}
+{% endautoescape %}

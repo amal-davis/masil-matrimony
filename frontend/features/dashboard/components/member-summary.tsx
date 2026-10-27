@@ -7,6 +7,7 @@ import { profilePath } from "@/features/profiles/paths";
 import { formatMemberLocation } from "../format";
 import type { OtherMember } from "../types";
 import { MemberPhoto } from "./member-photo";
+import { VerifiedBadge } from "./verified-badge";
 
 /** Photo, name, member ID and key facts for another member, as a horizontal row. Used in lists. */
 export function MemberSummary({ member, children }: { member: OtherMember; children?: ReactNode }) {
@@ -58,6 +59,7 @@ export function MemberSummary({ member, children }: { member: OtherMember; child
         >
           {member.display_name}
         </Link>
+        {member.verified && <VerifiedBadge className="ml-2 align-middle" />}
         <p className="text-sm text-ink-muted">{member.profile_code}</p>
         <p className="mt-1 text-sm leading-relaxed break-words text-ink">{facts.join(" · ")}</p>
         {children}

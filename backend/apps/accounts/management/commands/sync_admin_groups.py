@@ -18,8 +18,44 @@ VIEW_ALL = [
     "interactions.view_contactview",
     "memberships.view_membershippackage",
     "memberships.view_subscription",
+    "memberships.view_assistancerequest",
     "notifications.view_notification",
     "enquiries.view_enquiry",
+]
+
+MATCHMAKING_CASE_WORK = [
+    "memberships.view_assistancerequest",
+    "memberships.change_assistancerequest",
+    "memberships.view_assistancenote",
+    "memberships.add_assistancenote",
+    "memberships.change_assistancenote",
+    "memberships.view_assistancefollowup",
+    "memberships.add_assistancefollowup",
+    "memberships.change_assistancefollowup",
+    "memberships.view_assistancecandidate",
+    "memberships.add_assistancecandidate",
+    "memberships.change_assistancecandidate",
+    "memberships.view_contactexchange",
+    "memberships.add_contactexchange",
+    "memberships.change_contactexchange",
+    "memberships.view_contactconsent",
+    "memberships.view_consultation",
+    "memberships.add_consultation",
+    "memberships.change_consultation",
+    "memberships.view_familycontact",
+    "memberships.add_familycontact",
+    "memberships.change_familycontact",
+    "memberships.view_familycoordination",
+    "memberships.add_familycoordination",
+]
+
+# Automatic match recommendations (apps.matchmaking): look, and approve, dismiss or flag.
+AUTO_MATCH_REVIEW = [
+    "matchmaking.view_matchrecommendation",
+    "matchmaking.view_pendingrecommendation",
+    "matchmaking.view_mutualmatch",
+    "matchmaking.view_matchrun",
+    "matchmaking.review_matchrecommendation",
 ]
 
 GROUPS = {
@@ -47,6 +83,49 @@ GROUPS = {
         "memberships.view_subscription",
         "memberships.add_subscription",
         "memberships.change_subscription",
+    ],
+    # Matchmakers: work on the matchmaking cases assigned to them (Gold/Diamond requests and
+    # Platinum service cases): notes, follow-ups, suggested profiles and consent-based contact
+    # exchanges. They see only their own cases. No staff account is in this group until a
+    # superuser adds one.
+    "Matchmakers": [
+        "accounts.view_user",
+        "profiles.view_profile",
+        "profiles.view_profilephoto",
+        "interactions.view_interest",
+        "interactions.view_shortlist",
+        "memberships.view_subscription",
+        *MATCHMAKING_CASE_WORK,
+        *AUTO_MATCH_REVIEW,
+    ],
+    # Matchmaking managers: see every case and assign or reassign matchmakers.
+    "Matchmaking managers": [
+        "accounts.view_user",
+        "profiles.view_profile",
+        "profiles.view_profilephoto",
+        "interactions.view_interest",
+        "memberships.view_subscription",
+        *MATCHMAKING_CASE_WORK,
+        "memberships.assign_assistancerequest",
+        *AUTO_MATCH_REVIEW,
+        "matchmaking.generate_matchrecommendation",
+    ],
+    # Membership Purchases: payments, refunds as reported by Razorpay, revenue and CSV export.
+    # They can ask Razorpay for a purchase's status (which is the only way a purchase becomes
+    # paid) and resend receipts; nothing lets them mark anything paid or change an amount.
+    "Finance staff": [
+        "accounts.view_user",
+        "profiles.view_profile",
+        "memberships.view_subscription",
+        "payments.view_purchase",
+        "payments.change_purchase",
+        "payments.view_purchase_financials",
+        "payments.export_purchase",
+        "payments.view_razorpaypayment",
+        "payments.view_purchaseevent",
+        "payments.view_receipt",
+        "payments.change_receipt",
+        "payments.view_webhookevent",
     ],
     # Answer enquiries and look up members.
     "Support staff": [*VIEW_ALL, "enquiries.change_enquiry"],

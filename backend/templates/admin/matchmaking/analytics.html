@@ -1,0 +1,44 @@
+{% extends "admin/base_site.html" %}
+
+{% comment %}
+    Matchmaking Management > Analytics (MatchRecommendationAdmin.analytics_view). Every figure is a
+    database count (apps/matchmaking/engine.py, analytics). A recommendation is one direction
+    (candidate for member) and is counted once; a pair is one unordered pair of members.
+{% endcomment %}
+
+{% block content %}
+    <div class="flex flex-col gap-6">
+        <p class="text-sm">
+            Review before display is <strong>{% if review_required %}required{% else %}not required{% endif %}</strong>
+            (MATCH_REVIEW_REQUIRED).
+            {% if figures.last_run %}Last run: {{ figures.last_run.finished_at }} ({{ figures.last_run.members_evaluated }} members evaluated).{% else %}No generation run yet.{% endif %}
+            {% if can_generate %}<a class="underline text-primary-600" href="{% url 'admin:matchmaking_generate' %}">Generate matches</a>{% endif %}
+        </p>
+        <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label="Recommendations">
+            <div class="border border-base-200 rounded-default p-4 dark:border-base-800"><p class="text-sm">Eligible members</p><p class="text-2xl font-semibold">{{ figures.eligible_members }}</p><p class="text-xs">Approved profiles of active accounts</p></div>
+            <div class="border border-base-200 rounded-default p-4 dark:border-base-800"><p class="text-sm">Members with current recommendations</p><p class="text-2xl font-semibold">{{ figures.members }}</p></div>
+            <div class="border border-base-200 rounded-default p-4 dark:border-base-800"><p class="text-sm">Current recommendations</p><p class="text-2xl font-semibold">{{ figures.current }}</p><p class="text-xs">{{ figures.total }} stored in all; {{ figures.stale }} need re-evaluation; {{ figures.withdrawn }} no longer match</p></div>
+            <div class="border border-base-200 rounded-default p-4 dark:border-base-800"><p class="text-sm">Members with no partner preferences</p><p class="text-2xl font-semibold">{{ figures.incomplete }}</p><p class="text-xs">No recommendations until they fill some in</p></div>
+            <div class="border border-base-200 rounded-default p-4 dark:border-base-800"><p class="text-sm">Awaiting review</p><p class="text-2xl font-semibold">{{ figures.pending }}</p><p class="text-xs">{{ figures.flagged }} flagged</p></div>
+            <div class="border border-base-200 rounded-default p-4 dark:border-base-800"><p class="text-sm">Approved / dismissed</p><p class="text-2xl font-semibold">{{ figures.approved }} / {{ figures.dismissed }}</p></div>
+            <div class="border border-base-200 rounded-default p-4 dark:border-base-800"><p class="text-sm">Hidden by members</p><p class="text-2xl font-semibold">{{ figures.hidden }}</p></div>
+            <div class="border border-base-200 rounded-default p-4 dark:border-base-800"><p class="text-sm">Mutually compatible pairs</p><p class="text-2xl font-semibold">{{ figures.mutual }}</p><p class="text-xs">of {{ figures.pairs }} pairs; {{ figures.mutual_accepted }} also have an accepted interest ({{ figures.accepted_interests }} accepted interests site-wide)</p></div>
+        </section>
+
+        <form method="get" class="flex flex-wrap items-end gap-3 text-sm">
+            <label class="flex flex-col">From <input type="date" name="from" value="{{ period.0 }}" class="border rounded px-2 py-1"></label>
+            <label class="flex flex-col">To <input type="date" name="to" value="{{ period.1 }}" class="border rounded px-2 py-1"></label>
+            <button type="submit" class="border rounded px-3 py-1">Count new recommendations</button>
+            {% if figures.in_period is not None %}<p>New recommendations in this period: <strong>{{ figures.in_period }}</strong></p>{% endif %}
+        </form>
+
+        <section aria-label="Members without preferences">
+            <h2 class="font-semibold mb-2">Members with no partner preferences (first 50)</h2>
+            {% if incomplete %}
+                <ul class="text-sm leading-relaxed">
+                    {% for profile in incomplete %}<li><a class="underline" href="{% url 'admin:profiles_profile_change' profile.pk %}">{{ profile.profile_code }}</a> {{ profile.display_name }}</li>{% endfor %}
+                </ul>
+            {% else %}<p class="text-sm">Every approved member has some partner preferences.</p>{% endif %}
+        </section>
+    </div>
+{% endblock %}

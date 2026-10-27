@@ -11,6 +11,13 @@ Online membership purchases through Razorpay (see apps.payments.services).
   numbering and email delivery record.
 - WebhookEvent: Razorpay webhook deliveries, by event id, for idempotency and
   troubleshooting.
+- PurchaseEvent: the history of a purchase's payment and refund status, and
+  what reported each change.
+
+Refunds are made in Razorpay's dashboard; this system only records what
+Razorpay reports for the paid payment (refund status and amount), from
+refund webhooks or a status check. Recording a refund doesn't end the
+membership: staff cancel it under Subscriptions if the business decides so.
 
 Gateway secrets come from environment variables only and are never stored here.
 """
@@ -37,6 +44,12 @@ class PurchaseStatus(models.TextChoices):
     NEEDS_REVIEW = "needs_review", "Needs review"
     # The Razorpay order couldn't be created. Nothing was charged.
     ORDER_FAILED = "order_failed", "Couldn't start payment"
+
+
+class RefundStatus(models.TextChoices):
+    NONE = "none", "Not refunded"
+    PARTIAL = "partial", "Partly refunded"
+    FULL = "full", "Fully refunded"
 
 
 class Purchase(TimeStampedModel):
@@ -82,9 +95,23 @@ class Purchase(TimeStampedModel):
     )
     last_checked_at = models.DateTimeField(null=True, blank=True)
 
+    # Refunds of the paid payment, as Razorpay reports them (made in Razorpay's dashboard).
+    refund_status = models.CharField(
+        max_length=8, choices=RefundStatus.choices, default=RefundStatus.NONE, db_index=True
+    )
+    refunded_amount_subunits = models.PositiveBigIntegerField(default=0, help_text="Paise refunded so far.")
+    refunded_at = models.DateTimeField(null=True, blank=True, help_text="When a refund was first recorded here.")
+
     class Meta:
         ordering = ["-created_at"]
-        indexes = [models.Index(fields=["user", "status", "created_at"])]
+        indexes = [
+            models.Index(fields=["user", "status", "created_at"]),
+            models.Index(fields=["status", "paid_at"]),
+        ]
+        permissions = [
+            ("view_purchase_financials", "Can see purchase amounts and revenue figures"),
+            ("export_purchase", "Can export purchases to CSV"),
+        ]
         constraints = [
             models.CheckConstraint(
                 condition=~Q(status="paid") | (Q(razorpay_payment_id__isnull=False) & Q(paid_at__isnull=False)),
@@ -106,6 +133,7 @@ class RazorpayPayment(TimeStampedModel):
     amount_subunits = models.PositiveBigIntegerField()
     currency = models.CharField(max_length=3)
     method = models.CharField(max_length=20, blank=True)
+    amount_refunded_subunits = models.PositiveBigIntegerField(default=0)
     error_code = models.CharField(max_length=60, blank=True)
     error_description = models.CharField(max_length=255, blank=True)
     razorpay_created_at = models.DateTimeField(null=True, blank=True)
@@ -186,3 +214,33 @@ class WebhookEvent(models.Model):
 
     def __str__(self):
         return f"{self.event} {self.event_id}"
+
+
+class EventSource(models.TextChoices):
+    ORDER = "order", "Order created"
+    CHECKOUT = "checkout", "Checkout callback"
+    WEBHOOK = "webhook", "Razorpay webhook"
+    MEMBER_CHECK = "member_check", "Member's status check"
+    STAFF_CHECK = "staff_check", "Staff status check"
+    SYSTEM = "system", "System"
+
+
+class PurchaseEvent(models.Model):
+    """One change of a purchase's payment or refund status, and what reported it. Append-only."""
+
+    purchase = models.ForeignKey(Purchase, on_delete=models.PROTECT, related_name="events")
+    status = models.CharField(max_length=20, choices=PurchaseStatus.choices)
+    refund_status = models.CharField(max_length=8, choices=RefundStatus.choices, default=RefundStatus.NONE)
+    source = models.CharField(max_length=12, choices=EventSource.choices)
+    # A short, non-sensitive note (e.g. the Razorpay payment id). Never card or contact data.
+    note = models.CharField(max_length=255, blank=True)
+    # The staff member, for staff-triggered checks.
+    staff = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+        verbose_name = "purchase status change"
+
+    def __str__(self):
+        return f"{self.get_status_display()} ({self.get_source_display()})"

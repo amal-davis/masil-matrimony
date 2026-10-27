@@ -93,7 +93,8 @@ class AdminDashboardTests(TestCase):
         self.assertEqual(stats["Registered members"], 0)
         self.assertEqual(stats["Active memberships"], 0)
         self.assertContains(response, "No profiles are waiting for review.")
-        self.assertContains(response, "no payment gateway is connected yet")
+        self.assertNotContains(response, "no payment gateway is connected yet")  # payments exist now
+        self.assertEqual((stats["Paid purchases"], stats["Collected this month"]), (0, "₹0.00"))
 
     def test_figures_come_from_the_database(self):
         make_profile(status=ProfileStatus.PENDING_REVIEW)
@@ -187,7 +188,7 @@ class SyncAdminGroupsTests(TestCase):
         reviewers = Group.objects.get(name="Read-only reviewers")
         self.assertTrue(reviewers.permissions.exists())
         self.assertFalse(reviewers.permissions.exclude(codename__startswith="view_").exists())
-        self.assertEqual(Group.objects.count(), 5)
+        self.assertEqual(Group.objects.count(), 8)
         content = Group.objects.get(name="Content managers")
         self.assertEqual(
             set(content.permissions.values_list("codename", flat=True)),

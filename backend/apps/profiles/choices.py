@@ -151,3 +151,15 @@ class PhotoStatus(models.TextChoices):
     PENDING = "pending", "Pending review"
     APPROVED = "approved", "Approved"
     REJECTED = "rejected", "Rejected"
+
+
+class VerificationStatus(models.TextChoices):
+    """Identity verification for the Verified badge (apps.profiles.verification). Separate from profile review."""
+
+    NOT_REQUESTED = "not_requested", "Not requested"
+    # The member asked; staff haven't decided yet.
+    REQUESTED = "requested", "Awaiting verification"
+    # Staff checked the member's identity document against the profile.
+    VERIFIED = "verified", "Verified"
+    # Staff couldn't verify; the note says why. The member may ask again.
+    DECLINED = "declined", "Not verified"

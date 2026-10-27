@@ -185,6 +185,7 @@ class ContactAccess:
     PROFILE_NOT_ACTIVE = "profile_not_active"  # the viewer's own profile isn't approved
     NOT_INCLUDED = "not_included"  # no current package with self-service contact access
     NOT_SHARED = "not_shared"  # the member hasn't agreed to share their number
+    SAME_GENDER = "same_gender"  # numbers are shared between brides and grooms only, as interests are
     LIMIT_REACHED = "limit_reached"
     NO_NUMBER = "no_number"
 
@@ -196,6 +197,7 @@ CONTACT_MESSAGES = {
         "On assisted packages, your matchmaker coordinates contact."
     ),
     ContactAccess.NOT_SHARED: "This member hasn't chosen to share their mobile number.",
+    ContactAccess.SAME_GENDER: "Contact numbers are shared only between brides and grooms.",
     ContactAccess.LIMIT_REACHED: "You've viewed all the contact numbers included with your membership.",
     ContactAccess.NO_NUMBER: "This member has no mobile number on file.",
 }
@@ -206,6 +208,8 @@ def _contact_access(viewer: Profile, profile: Profile, subscription) -> str:
         return ContactAccess.PROFILE_NOT_ACTIVE
     if subscription is None or not subscription.contact_view_limit:
         return ContactAccess.NOT_INCLUDED
+    if profile.gender == viewer.gender:
+        return ContactAccess.SAME_GENDER
     # Checked before "viewed": a member who stops sharing is hidden from everyone at once.
     if profile.contact_sharing != ContactSharing.PAID_MEMBERS:
         return ContactAccess.NOT_SHARED

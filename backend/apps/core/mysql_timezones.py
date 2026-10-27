@@ -1,0 +1,138 @@
+"""
+MySQL/MariaDB time-zone definitions, for servers that have none.
+
+With USE_TZ, Django's date truncation on MySQL/MariaDB (admin date_hierarchy,
+QuerySet.dates()/datetimes(), Trunc*) runs CONVERT_TZ(column, 'UTC', TIME_ZONE).
+With named zones that needs the server's mysql.time_zone* tables; when they
+are empty CONVERT_TZ returns NULL and Django raises "Database returned an
+invalid datetime value. Are time zone definitions for your database installed?".
+XAMPP and the Windows MariaDB/MySQL zips ship those tables empty, and their
+mariadb-tzinfo-to-sql / mysql_tzinfo_to_sql can't read a zone directory on
+Windows.
+
+timezone_sql() builds the rows from the IANA tzdata package Django already
+uses on Windows (tzdata, in the virtualenv). Its files are "slim": the legacy
+32-bit section that mariadb-tzinfo-to-sql reads is empty (loading them that
+way gives every zone offset 0), so this reads the 64-bit section instead.
+Only zones whose rules have no future daylight-saving changes are included:
+their complete history is in that section, so the rows are exact. (Zones with
+ongoing DST, e.g. America/New_York, store future changes as a rule string that
+would need expanding; they are left out and listed.) Every zone is checked
+against Python's zoneinfo before it is written. Asia/Kolkata and UTC, the only
+zones this project converts between, are included.
+"""
+import re
+import struct
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from importlib import resources
+from zoneinfo import ZoneInfo, available_timezones
+
+INT32_MIN, INT32_MAX = -(2**31), 2**31 - 1
+EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+# A POSIX TZ footer without a DST part: "IST-5:30", "<+0530>-5:30", "UTC0".
+FIXED_FOOTER = re.compile(r"^(<[^>]+>|[A-Za-z]+)[+-]?\d{1,2}(:\d{2}){0,2}$")
+
+
+@dataclass
+class Zone:
+    name: str
+    transitions: list  # (unix time, type index)
+    types: list  # (utc offset seconds, is_dst, abbreviation)
+
+
+class Unsupported(Exception):
+    pass
+
+
+def _read(name: str) -> bytes:
+    parts = name.split("/")
+    return resources.files("tzdata.zoneinfo").joinpath(*parts).read_bytes()
+
+
+def parse(name: str) -> Zone:
+    """The 64-bit (version 2+) data of a TZif file. Raises Unsupported for zones with future DST rules."""
+    data = _read(name)
+    if data[:4] != b"TZif" or data[4:5] < b"2":
+        raise Unsupported("not a version 2+ TZif file")
+    counts = struct.unpack(">6l", data[20:44])
+    isutcnt, isstdcnt, leapcnt, timecnt, typecnt, charcnt = counts
+    v1_size = timecnt * 5 + typecnt * 6 + charcnt + leapcnt * 8 + isstdcnt + isutcnt
+    pos = 44 + v1_size
+    if data[pos:pos + 4] != b"TZif":
+        raise Unsupported("missing version 2 header")
+    isutcnt, isstdcnt, leapcnt, timecnt, typecnt, charcnt = struct.unpack(">6l", data[pos + 20:pos + 44])
+    pos += 44
+    times = struct.unpack(f">{timecnt}q", data[pos:pos + timecnt * 8])
+    pos += timecnt * 8
+    indices = data[pos:pos + timecnt]
+    pos += timecnt
+    raw_types = [struct.unpack(">lBB", data[pos + i * 6:pos + i * 6 + 6]) for i in range(typecnt)]
+    pos += typecnt * 6
+    chars = data[pos:pos + charcnt]
+    pos += charcnt + leapcnt * 12 + isstdcnt + isutcnt
+    footer = data[pos:].strip(b"\n").decode("ascii")
+    if leapcnt:
+        raise Unsupported("leap-second zone")
+    if footer and not FIXED_FOOTER.match(footer):
+        raise Unsupported(f"future daylight-saving rules ({footer})")
+    types = [(offset, isdst, chars[abbr:chars.index(b"\0", abbr)].decode("ascii")) for offset, isdst, abbr in raw_types]
+    # Like the classic 32-bit tables: transitions inside the signed 32-bit range.
+    transitions = [(t, i) for t, i in zip(times, indices) if INT32_MIN <= t <= INT32_MAX]
+    return Zone(name, transitions, types)
+
+
+def verify(zone: Zone) -> None:
+    """Every transition, and now, give the same UTC offset as Python's zoneinfo."""
+    info = ZoneInfo(zone.name)
+    checks = [(t, zone.types[i][0]) for t, i in zone.transitions]
+    now = int(datetime.now(timezone.utc).timestamp())
+    current = next((zone.types[i][0] for t, i in reversed(zone.transitions) if t <= now), zone.types[0][0])
+    checks.append((now, current))
+    for moment, offset in checks:
+        # Not datetime.fromtimestamp: on Windows it rejects times before 1970.
+        expected = (EPOCH + timedelta(seconds=moment)).astimezone(info).utcoffset().total_seconds()
+        if expected != offset:
+            raise Unsupported(f"offset at {moment} is {offset}, zoneinfo says {expected:.0f}")
+
+
+def _quote(text: str) -> str:
+    return "'" + text.replace("\\", "\\\\").replace("'", "''") + "'"
+
+
+def timezone_sql(names=None, replace=False) -> tuple[str, list[str], list[tuple[str, str]]]:
+    """(SQL for the mysql schema, zones included, zones skipped with why)."""
+    wanted = sorted(names or available_timezones())
+    lines = [
+        "-- Time-zone definitions generated by `manage.py timezone_sql` from the tzdata package.",
+        "-- Load into the `mysql` schema as an administrator, then restart the server.",
+    ]
+    if replace:
+        lines += [f"TRUNCATE TABLE {table};" for table in (
+            "time_zone", "time_zone_name", "time_zone_transition", "time_zone_transition_type",
+        )]
+    included, skipped = [], []
+    for name in wanted:
+        try:
+            zone = parse(name)
+            verify(zone)
+        except (Unsupported, FileNotFoundError, ValueError) as error:
+            skipped.append((name, str(error)))
+            continue
+        lines += [
+            "INSERT INTO time_zone (Use_leap_seconds) VALUES ('N');",
+            "SET @time_zone_id = LAST_INSERT_ID();",
+            f"INSERT INTO time_zone_name (Name, Time_zone_id) VALUES ({_quote(name)}, @time_zone_id);",
+        ]
+        if zone.transitions:
+            values = ",".join(f"(@time_zone_id,{t},{i})" for t, i in zone.transitions)
+            lines.append(f"INSERT INTO time_zone_transition (Time_zone_id, Transition_time, Transition_type_id) VALUES {values};")
+        values = ",".join(
+            f"(@time_zone_id,{index},{offset},{isdst},{_quote(abbr)})" for index, (offset, isdst, abbr) in enumerate(zone.types)
+        )
+        lines.append(
+            "INSERT INTO time_zone_transition_type (Time_zone_id, Transition_type_id, `Offset`, Is_DST, Abbreviation) "
+            f"VALUES {values};"
+        )
+        included.append(name)
+    return "\n".join(lines) + "\n", included, skipped
